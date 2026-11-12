@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# App runtime data (local only: settings, stats, logs)
+data/
+*.log
+
+# Local/private screenshots (never publish real faces)
+screenshots/final_real.png
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
