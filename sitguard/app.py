@@ -71,6 +71,9 @@ class App:
 
         self._paused_by_user = False
         self._quitting = False
+        self._camera_error_since: float | None = None
+        self._last_camera_restart = 0.0
+        self._last_camera_notice = 0.0
         self._last_stats_save = time.monotonic()
         self._last_preview = 0.0
         self._tray = None
@@ -162,7 +165,7 @@ class App:
         if self._tray is not None:
             tray = self._tray
             self._tray = None
-            threading.Thread(target=self._stop_tray, args=(tray,), daemon=True).start()
+            threading.Thread(target=self._stop_async, args=(tray,), daemon=True).start()
         try:
             self.overlay.close()
             self.root.destroy()
@@ -170,9 +173,9 @@ class App:
             pass
 
     @staticmethod
-    def _stop_tray(tray) -> None:
+    def _stop_async(target) -> None:
         try:
-            tray.stop()
+            target.stop()
         except Exception:  # noqa: BLE001
             pass
 
@@ -185,6 +188,10 @@ class App:
                 self.camera.stop()
             except Exception:  # noqa: BLE001
                 pass
+            self.camera = None
+        self._start_camera()
+
+    def _start_camera(self) -> None:
         if not self.config.camera_enabled:
             self._camera_state = "off"
             self._camera_message = i18n.t("camera_off_msg")
@@ -197,12 +204,47 @@ class App:
                                on_posture=self._on_posture)
         self.camera = cam
         self._camera_state = "init"
+        self._camera_error_since = None
         cam.start()
         if self.manual_posture:
             try:
                 cam.posture.set_manual(self.manual_posture, time.monotonic())
             except Exception:  # noqa: BLE001
                 pass
+
+    def _camera_watchdog(self, now: float, snap: CameraSnapshot) -> None:
+        """长时间运行/驱动掉线时自动重启摄像头，避免必须手动开关。"""
+        if not self.config.camera_enabled or self.camera is None:
+            self._camera_error_since = None
+            return
+        state = snap.status.state
+        if state == "error":
+            if self._camera_error_since is None:
+                self._camera_error_since = now
+            if (now - self._camera_error_since > 12.0
+                    and now - self._last_camera_restart > 25.0):
+                self._recover_camera(now, "连续打开失败")
+        elif state == "ok":
+            self._camera_error_since = None
+            # 画面 8 秒没有新帧：线程可能卡死或设备被系统挂起
+            if (snap.stamp and now - snap.stamp > 8.0
+                    and now - self._last_camera_restart > 25.0):
+                self._recover_camera(now, "画面停止更新")
+        else:
+            self._camera_error_since = None
+
+    def _recover_camera(self, now: float, reason: str) -> None:
+        self._last_camera_restart = now
+        log.warning("摄像头自动恢复：%s", reason)
+        if now - self._last_camera_notice > 60.0:
+            self._last_camera_notice = now
+            self.notify(i18n.t("toast_camera_recover"), ui.WARN)
+        old = self.camera
+        self.camera = None
+        if old is not None:
+            # 释放旧设备可能阻塞，放到后台线程，避免界面卡住
+            threading.Thread(target=self._stop_async, args=(old,), daemon=True).start()
+        self._start_camera()
 
     def _on_presence(self, seen: bool, when: float) -> None:
         # 摄像头线程调用
@@ -275,6 +317,7 @@ class App:
                 elif status.state == "off":
                     self._camera_state = "off"
                     self._camera_message = status.message
+            self._camera_watchdog(now, self._camera_snapshot)
             self.engine.tick(now)
             try:
                 view = bool(self.root.winfo_exists()) and self.root.state() != "withdrawn"
@@ -507,7 +550,7 @@ class App:
         if self._tray is not None:
             old = self._tray
             self._tray = None
-            threading.Thread(target=self._stop_tray, args=(old,), daemon=True).start()
+            threading.Thread(target=self._stop_async, args=(old,), daemon=True).start()
         try:
             import pystray
             from PIL import Image

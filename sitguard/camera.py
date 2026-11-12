@@ -178,6 +178,7 @@ class CameraWorker:
         self._snapshot = CameraSnapshot()
         self._detector: FaceDetector | None = None
         self._pose: PoseDetector | None = None
+        self._cap = None
         self.posture = PostureAnalyzer()
         self._last_posture: Posture = "unknown"
         self._pose_error = ""
@@ -202,7 +203,16 @@ class CameraWorker:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=3.0)
+            if self._thread.is_alive():
+                # 读帧卡死时释放设备，强制唤醒采集线程
+                try:
+                    if self._cap is not None:
+                        self._cap.release()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._thread.join(timeout=1.5)
             self._thread = None
+        self._cap = None
         self._set_status("off", "摄像头已关闭")
 
     def restart(self) -> None:
@@ -282,10 +292,19 @@ class CameraWorker:
                 self._set_status("error", message)
                 if fail_count == 1:
                     log.warning("摄像头打开失败（index=%s）", self.config.camera_index)
-                self._stop.wait(4.0)
+                self._stop.wait(min(15.0, 2.0 * fail_count + 2.0))
                 continue
             fail_count = 0
-            self._capture_loop(cap, frame)
+            try:
+                self._capture_loop(cap, frame)
+            except Exception:  # noqa: BLE001
+                log.exception("摄像头采集线程异常，2 秒后自动重连")
+                self._set_status("error", "摄像头异常，正在自动重连…")
+                try:
+                    cap.release()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._stop.wait(2.0)
 
     def _capture_loop(self, cap, first_frame) -> None:
         fps_t0 = time.monotonic()
@@ -299,9 +318,22 @@ class CameraWorker:
         pose_lms: list[Landmark] | None = None
         frame = first_frame
         posture: Posture = "unknown"
+        detector_born = time.monotonic()
         try:
+            self._cap = cap
             while not self._stop.is_set():
                 now = time.monotonic()
+                if now - detector_born > 3600 and self._stop.is_set() is False:
+                    try:
+                        self._detector = FaceDetector(score_threshold=self.config.sensitivity)
+                        if getattr(self.config, "posture_enabled", True):
+                            self._pose = PoseDetector(
+                                getattr(self.config, "pose_model", POSE_MODELS[0]))
+                        detector_born = now
+                        log.info("已重建人脸/姿态检测器（长时间运行维护）")
+                    except Exception:  # noqa: BLE001
+                        detector_born = now
+                        log.exception("重建检测器失败，继续使用旧实例")
                 if frame is None:
                     ok, frame = cap.read()
                     if not ok or frame is None or frame.size == 0:
@@ -380,6 +412,7 @@ class CameraWorker:
                 frame = None
                 self._stop.wait(0.01)
         finally:
+            self._cap = None
             try:
                 cap.release()
             except Exception:  # noqa: BLE001

@@ -28,6 +28,8 @@ as soon as you stand.
 - **High-DPI ready** — per-monitor V2 awareness with crisp rendering on
   3.5K/200% displays.
 - **Tray, autostart, daily stats**, single instance, fully local processing.
+- **Camera auto-recovery** — if the feed stalls or the device drops after hours
+  of running, a watchdog reconnects automatically; detectors are rebuilt hourly.
 
 ![Break reminder](screenshots/break_overlay.png)
 
