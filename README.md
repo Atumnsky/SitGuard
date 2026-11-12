@@ -36,6 +36,10 @@ as soon as you stand.
 - **Tray, autostart, daily stats**, single instance, fully local processing.
 - **Camera auto-recovery** — if the feed stalls or the device drops after hours
   of running, a watchdog reconnects automatically; detectors are rebuilt hourly.
+- **Snow / black frame detection** — corrupted camera output (TV-static noise or
+  an all-black feed) is detected within seconds and the device is restarted.
+- **Optional scheduled restart** — Settings → Restart camera every N minutes
+  (0 = off) for drivers that degrade over long sessions.
 
 ![Break reminder](screenshots/break_overlay.png)
 
@@ -88,6 +92,7 @@ frame” and treats losing sight of you as standing up.
 | Finish break when out of frame | 12 s | Leaving the frame also completes the break |
 | Restart sitting after standing | 3 min | Standing this long restarts the sitting timer |
 | Camera index | 0 | Try 1 for an external camera |
+| Restart camera every | 0 (off) | Periodic soft reset for unstable drivers; try 45 min |
 | Face detection sensitivity | 0.60 | Lower = more sensitive |
 | Posture calibration | — | Record sitting/standing profiles |
 | Language | 中文 | Chinese / English |

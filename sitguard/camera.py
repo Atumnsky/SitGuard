@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .health import FrameHealth
 from .posture import (Landmark, Posture, PostureAnalyzer, PostureProfile,
                       extract_profile)
 
@@ -182,6 +183,8 @@ class CameraWorker:
         self.posture = PostureAnalyzer()
         self._last_posture: Posture = "unknown"
         self._pose_error = ""
+        self._health = FrameHealth()
+        self._health_retry_at = 0.0
         self._apply_calibration()
 
     def _apply_calibration(self) -> None:
@@ -343,6 +346,15 @@ class CameraWorker:
                     frame = cv2.resize(
                         frame, (640, int(frame.shape[0] * 640 / frame.shape[1])),
                         interpolation=cv2.INTER_AREA)
+                reason = self._health.update(frame, now)
+                if reason and now >= self._health_retry_at:
+                    self._health_retry_at = now + (10.0 if reason == "snow" else 30.0)
+                    log.warning("检测到摄像头异常画面（%s），重启：%s",
+                                reason, self._health.last_stats)
+                    msg = ("画面异常（雪花），正在自动重连…" if reason == "snow"
+                           else "画面全黑，正在尝试重新连接…")
+                    self._set_status("error", msg)
+                    break
                 frames += 1
                 if now - fps_t0 >= 1.0:
                     fps = frames / (now - fps_t0)

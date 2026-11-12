@@ -41,6 +41,7 @@ class Config:
     # 摄像头
     camera_index: int = 0
     camera_enabled: bool = True
+    camera_restart_minutes: int = 0   # 0=关闭；定时重启摄像头
     demo_mode: bool = False          # 无摄像头演示：用模拟信号驱动
     language: str = "zh"
     window_width: int = 420
@@ -86,6 +87,7 @@ class Config:
         c.window_width = int(clamp(c.window_width, 150, 2000))
         c.window_height = int(clamp(c.window_height, 150, 2000))
         c.camera_index = int(clamp(c.camera_index, 0, 10))
+        c.camera_restart_minutes = int(clamp(c.camera_restart_minutes, 0, 180))
         c.sit_minutes = int(clamp(c.sit_minutes, 1, 480))
         c.break_minutes = int(clamp(c.break_minutes, 1, 60))
         c.away_minutes = int(clamp(c.away_minutes, 1, 120))

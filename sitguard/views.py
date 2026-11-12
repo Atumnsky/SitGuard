@@ -789,7 +789,7 @@ class SettingsWindow:
         win.configure(bg=ui.BG)
         win.resizable(False, False)
         win.transient(self.root)
-        ui.center_window(win, ui.dp(440), ui.dp(748), anchor="center")
+        ui.center_window(win, ui.dp(440), ui.dp(792), anchor="center")
         win.protocol("WM_DELETE_WINDOW", self.close)
 
         body = tk.Frame(win, bg=ui.BG)
@@ -818,6 +818,9 @@ class SettingsWindow:
                   from_=30, to=900, step=30, hint_key="hint_stand_reset")
         self._row(body, "row_cam", tk.IntVar(value=cfg.camera_index), "",
                   from_=0, to=8, step=1, hint_key="hint_cam")
+        self._row(body, "row_cam_restart",
+                  tk.IntVar(value=int(cfg.camera_restart_minutes)), "minutes",
+                  from_=0, to=180, step=5, hint_key="hint_cam_restart")
         self._row(body, "row_sens", tk.DoubleVar(value=cfg.sensitivity), "",
                   from_=0.3, to=0.9, step=0.05, decimals=2, hint_key="hint_sens")
 
@@ -916,6 +919,7 @@ class SettingsWindow:
             cfg.standing_break_seconds = float(self.vars["row_stand_break"].get())
             cfg.standing_reset_seconds = float(self.vars["row_stand_reset"].get())
             cfg.camera_index = int(float(self.vars["row_cam"].get()))
+            cfg.camera_restart_minutes = int(float(self.vars["row_cam_restart"].get()))
             cfg.sensitivity = round(float(self.vars["row_sens"].get()), 2)
         except (ValueError, tk.TclError):
             self.app.notify(t("invalid_number"), ui.DANGER)

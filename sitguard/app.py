@@ -72,6 +72,7 @@ class App:
         self._paused_by_user = False
         self._quitting = False
         self._camera_error_since: float | None = None
+        self._camera_started_at = time.monotonic()
         self._last_camera_restart = 0.0
         self._last_camera_notice = 0.0
         self._last_stats_save = time.monotonic()
@@ -236,7 +237,7 @@ class App:
     def _recover_camera(self, now: float, reason: str) -> None:
         self._last_camera_restart = now
         log.warning("摄像头自动恢复：%s", reason)
-        if now - self._last_camera_notice > 60.0:
+        if reason != "定时重启" and now - self._last_camera_notice > 60.0:
             self._last_camera_notice = now
             self.notify(i18n.t("toast_camera_recover"), ui.WARN)
         old = self.camera
@@ -318,6 +319,12 @@ class App:
                     self._camera_state = "off"
                     self._camera_message = status.message
             self._camera_watchdog(now, self._camera_snapshot)
+            if (self.config.camera_restart_minutes > 0
+                    and self.camera is not None
+                    and not self.config.demo_mode
+                    and now - self._camera_started_at
+                    >= self.config.camera_restart_minutes * 60.0):
+                self._recover_camera(now, "定时重启")
             self.engine.tick(now)
             try:
                 view = bool(self.root.winfo_exists()) and self.root.state() != "withdrawn"
