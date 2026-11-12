@@ -189,6 +189,7 @@ class MainWindow:
         self._last_camera_state = "init"
         self._last_present = False
         self._dpi = ui.DPI
+        self._full_size = (self.DESIGN_W, self.DESIGN_H)
         self._toast_after = None
 
         self._fonts = {
@@ -213,10 +214,26 @@ class MainWindow:
         except tk.TclError:
             dpi = self._dpi
         if abs(dpi - self._dpi) > 6:
-            # 跨屏 DPI 变化：按新 DPI 重建，避免 Tk 把窗口“拉伸”
+            # 跨屏 DPI 变化：保持“逻辑尺寸”不变，避免窗口相对变小掉进迷你模式
+            old_scale = ui.SCALE
+            w = max(1, self.root.winfo_width())
+            h = max(1, self.root.winfo_height())
+            cur_logical = (w / old_scale, h / old_scale)
+            if self._mode == "full":
+                logical = (max(self.DESIGN_W, self._full_size[0]),
+                           max(self.DESIGN_H, self._full_size[1]))
+            else:
+                logical = cur_logical
             self._dpi = dpi
             ui.configure_scale(dpi, self.root)
             self.root.minsize(ui.dp(150), ui.dp(150))
+            try:
+                if self.root.state() != "zoomed":
+                    self.root.geometry(
+                        f"{int(round(logical[0] * ui.SCALE))}x"
+                        f"{int(round(logical[1] * ui.SCALE))}")
+            except tk.TclError:
+                pass
             self._rebuild_full()
         if self._layout_job is not None:
             try:
@@ -240,7 +257,6 @@ class MainWindow:
         }
         self._build_full()
         self._mode = None
-        self._layout()
 
     def destroy(self) -> None:
         if self._layout_job:
@@ -273,6 +289,8 @@ class MainWindow:
                 self._mode = "full"
             self.full.place(relx=0.5, rely=0.5, anchor="center",
                             width=full_w, height=full_h)
+            self._full_size = (max(self.DESIGN_W, w / ui.SCALE),
+                               max(self.DESIGN_H, h / ui.SCALE))
             if self._last_snap is not None:
                 self._refresh_full(self._last_snap, self._last_camera_state)
         else:

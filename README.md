@@ -26,7 +26,8 @@ as soon as you stand.
 - **Standing at the desk counts** — no need to walk away.
 - **Bilingual UI** — 中文 / English, switchable instantly in Settings.
 - **High-DPI ready** — per-monitor V2 awareness with crisp rendering on
-  3.5K/200% displays.
+  3.5K/200% displays, and preserves the logical window size when moved
+  between monitors with different scaling.
 - **Free resizing, timer-only mini mode** — drag the window to any size; below
   the full layout it collapses to a large timer. Double-click it (or click ⤢)
   to restore. The window size is remembered between runs.
