@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 
 env = {k: v for k, v in os.environ.items() if not k.startswith("SITGUARD_")}
+env["SITGUARD_ALLOW_MULTI"] = "1"
 proc = subprocess.Popen([PY, str(ROOT / "main.py")], cwd=str(ROOT), env=env,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:

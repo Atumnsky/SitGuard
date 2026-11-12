@@ -43,6 +43,8 @@ class Config:
     camera_enabled: bool = True
     demo_mode: bool = False          # 无摄像头演示：用模拟信号驱动
     language: str = "zh"
+    window_width: int = 420
+    window_height: int = 524
 
     # 计时（分钟 / 秒）
     sit_minutes: int = 45            # 连续久坐多少分钟后提醒
@@ -81,6 +83,8 @@ class Config:
     def normalized(self) -> "Config":
         c = Config(**asdict(self))
         c.language = "en" if str(c.language).lower().startswith("en") else "zh"
+        c.window_width = int(clamp(c.window_width, 150, 2000))
+        c.window_height = int(clamp(c.window_height, 150, 2000))
         c.camera_index = int(clamp(c.camera_index, 0, 10))
         c.sit_minutes = int(clamp(c.sit_minutes, 1, 480))
         c.break_minutes = int(clamp(c.break_minutes, 1, 60))

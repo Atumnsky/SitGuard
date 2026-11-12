@@ -156,38 +156,154 @@ class PreviewPanel(tk.Frame):
 
 
 class MainWindow:
+    """主界面：可自由缩放；小于设计尺寸时自动切成“只剩计时器”的迷你模式。"""
+
+    DESIGN_W = 420
+    DESIGN_H = 524
+
     def __init__(self, app, root: tk.Tk):
         self.app = app
         self.root = root
         root.title(t("app_title"))
         root.configure(bg=ui.BG)
-        root.resizable(False, False)
-        ui.center_window(root, ui.dp(420), ui.dp(524), anchor="topright")
+        root.resizable(True, True)
+        root.minsize(ui.dp(150), ui.dp(150))
+
+        cfg = app.config
+        w = max(ui.dp(150), ui.dp(int(getattr(cfg, "window_width", 420))))
+        h = max(ui.dp(150), ui.dp(int(getattr(cfg, "window_height", 524))))
+        ui.center_window(root, w, h, anchor="topright")
+
+        self.stage = tk.Frame(root, bg=ui.BG)
+        self.stage.pack(fill="both", expand=True)
+        self.full = tk.Frame(self.stage, bg=ui.BG,
+                             width=ui.dp(self.DESIGN_W), height=ui.dp(self.DESIGN_H))
+        self.full.pack_propagate(False)
+        self.mini = tk.Canvas(self.stage, bg=ui.BG, highlightthickness=0, bd=0)
+        self.mini.bind("<Double-Button-1>", lambda _e: self.restore_size())
+
+        self._mode: str | None = None
+        self._layout_job = None
+        self._layout_after = None
+        self._last_snap: Snapshot | None = None
+        self._last_camera_state = "init"
+        self._last_present = False
+        self._dpi = ui.DPI
+        self._toast_after = None
 
         self._fonts = {
             "small": ui.ui_font(9),
             "tiny": ui.ui_font(8),
             "num": ui.ui_font(14, "bold"),
         }
-        self._toast_after = None
-        self._build()
+        self._build_full()
+        self.toast = tk.Label(self.stage, text="", fg="#06211f", bg=ui.ACCENT,
+                              font=ui.ui_font(9, "bold"), padx=ui.dp(14), pady=ui.dp(6))
+        self.toast.place_forget()
 
-    # ---- 构建 ----
-    def _build(self) -> None:
-        root = self.root
-        top = tk.Frame(root, bg=ui.BG, height=ui.dp(52))
+        self._bind_id = root.bind("<Configure>", self._on_configure, add="+")
+        self.root.after(60, self._layout)
+
+    # ---- 窗口尺寸 / 模式 ----
+    def _on_configure(self, event) -> None:
+        if event.widget is not self.root:
+            return
+        try:
+            dpi = float(self.root.winfo_fpixels("1i"))
+        except tk.TclError:
+            dpi = self._dpi
+        if abs(dpi - self._dpi) > 6:
+            # 跨屏 DPI 变化：按新 DPI 重建，避免 Tk 把窗口“拉伸”
+            self._dpi = dpi
+            ui.configure_scale(dpi, self.root)
+            self.root.minsize(ui.dp(150), ui.dp(150))
+            self._rebuild_full()
+        if self._layout_job is not None:
+            try:
+                self.root.after_cancel(self._layout_job)
+            except tk.TclError:
+                pass
+        self._layout_job = self.root.after(80, self._layout)
+
+    def _rebuild_full(self) -> None:
+        try:
+            self.full.destroy()
+        except tk.TclError:
+            pass
+        self.full = tk.Frame(self.stage, bg=ui.BG,
+                             width=ui.dp(self.DESIGN_W), height=ui.dp(self.DESIGN_H))
+        self.full.pack_propagate(False)
+        self._fonts = {
+            "small": ui.ui_font(9),
+            "tiny": ui.ui_font(8),
+            "num": ui.ui_font(14, "bold"),
+        }
+        self._build_full()
+        self._mode = None
+        self._layout()
+
+    def destroy(self) -> None:
+        if self._layout_job:
+            try:
+                self.root.after_cancel(self._layout_job)
+            except tk.TclError:
+                pass
+            self._layout_job = None
+        try:
+            self.root.unbind("<Configure>", self._bind_id)
+        except tk.TclError:
+            pass
+
+    def _layout(self) -> None:
+        self._layout_job = None
+        try:
+            if not self.stage.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        w = self.stage.winfo_width()
+        h = self.stage.winfo_height()
+        if w <= 1 or h <= 1:
+            self.root.after(40, self._layout)
+            return
+        full_w, full_h = ui.dp(self.DESIGN_W), ui.dp(self.DESIGN_H)
+        if w >= full_w - 2 and h >= full_h - 2:
+            if self._mode != "full":
+                self.mini.place_forget()
+                self._mode = "full"
+            self.full.place(relx=0.5, rely=0.5, anchor="center",
+                            width=full_w, height=full_h)
+            if self._last_snap is not None:
+                self._refresh_full(self._last_snap, self._last_camera_state)
+        else:
+            if self._mode != "mini":
+                self.full.place_forget()
+                self._mode = "mini"
+            self.mini.place(x=0, y=0, relwidth=1, relheight=1)
+            self._draw_mini()
+
+    def restore_size(self) -> None:
+        ui.center_window(self.root, ui.dp(self.DESIGN_W), ui.dp(self.DESIGN_H),
+                         anchor="topright")
+        self.root.after(50, self._layout)
+
+    # ---- 完整布局 ----
+    def _build_full(self) -> None:
+        parent = self.full
+        top = tk.Frame(parent, bg=ui.BG, height=ui.dp(52))
         top.pack(fill="x", padx=ui.dp(18), pady=(ui.dp(12), 0))
         top.pack_propagate(False)
         tk.Label(top, text="SitGuard", fg=ui.ACCENT, bg=ui.BG,
                  font=ui.ui_font(15, "bold")).pack(side="left")
         tk.Label(top, text="  " + t("brand_sub"), fg=ui.TEXT_FAINT, bg=ui.BG,
                  font=ui.ui_font(9)).pack(side="left", pady=(ui.dp(6), 0))
-        self.btn_settings = ui.RoundButton(top, t("settings"), command=self.app.open_settings,
+        self.btn_settings = ui.RoundButton(top, t("settings"),
+                                          command=self.app.open_settings,
                                           width=58, height=28, radius=9, fill=ui.BG_3,
                                           font=ui.ui_font(8), bg=ui.BG)
         self.btn_settings.pack(side="right")
 
-        mid = tk.Frame(root, bg=ui.BG)
+        mid = tk.Frame(parent, bg=ui.BG)
         mid.pack(fill="x", padx=ui.dp(18), pady=(ui.dp(2), 0))
         self.ring = RingMeter(mid, size=ui.dp(200), bg=ui.BG)
         self.ring.pack(side="left")
@@ -197,36 +313,40 @@ class MainWindow:
         self.preview = PreviewPanel(right, width=166, height=94)
         self.preview.pack(fill="x")
         self.lbl_presence = tk.Label(right, text=t("init"), fg=ui.TEXT_DIM, bg=ui.BG,
-                                     font=self._fonts["small"], anchor="w", justify="left")
+                                     font=self._fonts["small"], anchor="w",
+                                     justify="left")
         self.lbl_presence.pack(fill="x", pady=(ui.dp(9), 0))
         self.lbl_presence_detail = tk.Label(right, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
                                            font=self._fonts["tiny"], anchor="w",
                                            justify="left", wraplength=ui.dp(150))
         self.lbl_presence_detail.pack(fill="x", pady=(ui.dp(2), 0))
-        self.btn_stand = ui.RoundButton(right, t("stand_mode"), command=self.app.toggle_standing,
+        self.btn_stand = ui.RoundButton(right, t("stand_mode"),
+                                        command=self.app.toggle_standing,
                                         width=78, height=24, radius=8, fill=ui.BG_2,
                                         font=ui.ui_font(8), bg=ui.BG)
         self.btn_stand.pack(side="left", pady=(ui.dp(9), 0))
-        self.btn_camera = ui.RoundButton(right, t("camera_off_btn"), command=self.app.toggle_camera,
+        self.btn_camera = ui.RoundButton(right, t("camera_off_btn"),
+                                         command=self.app.toggle_camera,
                                          width=78, height=24, radius=8, fill=ui.BG_2,
                                          font=ui.ui_font(8), bg=ui.BG)
         self.btn_camera.pack(side="left", padx=(ui.dp(6), 0), pady=(ui.dp(9), 0))
 
-        self.lbl_heading = tk.Label(root, text=t("recognizing"), fg=ui.TEXT, bg=ui.BG,
+        self.lbl_heading = tk.Label(parent, text=t("recognizing"), fg=ui.TEXT, bg=ui.BG,
                                     font=ui.ui_font(15, "bold"))
         self.lbl_heading.pack(fill="x", padx=ui.dp(18), pady=(ui.dp(6), 0))
-        self.lbl_sub = tk.Label(root, text="", fg=ui.TEXT_DIM, bg=ui.BG,
+        self.lbl_sub = tk.Label(parent, text="", fg=ui.TEXT_DIM, bg=ui.BG,
                                 font=self._fonts["small"], wraplength=ui.dp(384),
                                 justify="left")
         self.lbl_sub.pack(fill="x", padx=ui.dp(18), pady=(ui.dp(3), 0))
 
-        card = tk.Frame(root, bg=ui.BG_2, highlightthickness=1,
+        card = tk.Frame(parent, bg=ui.BG_2, highlightthickness=1,
                         highlightbackground=ui.BORDER)
         card.pack(fill="x", padx=ui.dp(18), pady=(ui.dp(10), 0))
         inner = tk.Frame(card, bg=ui.BG_2)
         inner.pack(fill="x", padx=ui.dp(14), pady=ui.dp(8))
         self.stat_vars = {}
-        for key, title in (("sit", t("stat_sit")), ("breaks", t("stat_breaks")), ("rem", t("stat_reminders"))):
+        for key, title in (("sit", t("stat_sit")), ("breaks", t("stat_breaks")),
+                           ("rem", t("stat_reminders"))):
             col = tk.Frame(inner, bg=ui.BG_2)
             col.pack(side="left", expand=True, fill="x")
             var = tk.StringVar(value="—")
@@ -236,27 +356,87 @@ class MainWindow:
             tk.Label(col, text=title, fg=ui.TEXT_FAINT, bg=ui.BG_2,
                      font=self._fonts["tiny"]).pack(anchor="w")
 
-        actions = tk.Frame(root, bg=ui.BG)
+        actions = tk.Frame(parent, bg=ui.BG)
         actions.pack(fill="x", padx=ui.dp(18), pady=(ui.dp(12), 0))
-        self.btn_pause = ui.RoundButton(actions, t("pause"), command=self.app.toggle_pause,
-                                        width=118, height=38)
+        self.btn_pause = ui.RoundButton(actions, t("pause"),
+                                        command=self.app.toggle_pause, width=118, height=38)
         self.btn_pause.pack(side="left")
-        self.btn_test = ui.RoundButton(actions, t("test_reminder"), command=self.app.test_break,
-                                       width=112, height=38, icon="🔔")
+        self.btn_test = ui.RoundButton(actions, t("test_reminder"),
+                                       command=self.app.test_break, width=112, height=38,
+                                       icon="🔔")
         self.btn_test.pack(side="left", padx=(ui.dp(10), 0))
         self.btn_min = ui.RoundButton(actions, t("to_tray"), command=self.app.hide_window,
                                       width=118, height=38, icon="▾", fill=ui.BG_3)
         self.btn_min.pack(side="right")
 
-        self.lbl_footer = tk.Label(root, text=t("footer"),
-                                   fg=ui.TEXT_FAINT, bg=ui.BG, font=ui.ui_font(7))
+        self.lbl_footer = tk.Label(parent, text=t("footer"), fg=ui.TEXT_FAINT, bg=ui.BG,
+                                   font=ui.ui_font(7))
         self.lbl_footer.pack(side="bottom", pady=(0, ui.dp(8)))
 
-        self.toast = tk.Label(root, text="", fg="#06211f", bg=ui.ACCENT,
-                              font=ui.ui_font(9, "bold"), padx=ui.dp(14), pady=ui.dp(6))
+    # ---- 迷你计时器 ----
+    def _draw_mini(self) -> None:
+        c = self.mini
+        c.delete("all")
+        w = c.winfo_width()
+        h = c.winfo_height()
+        if w < 24 or h < 24:
+            return
+        snap = self._last_snap
+        time_text, label, color, ratio = self._mini_values(snap)
+        d = min(w, h) - max(8, int(min(w, h) * 0.08))
+        x1 = (w - d) / 2
+        y1 = (h - d) / 2
+        box = (x1, y1, x1 + d, y1 + d)
+        th = max(4, int(d * 0.055))
+        pad = th / 2
+        ring_box = (box[0] + pad, box[1] + pad, box[2] - pad, box[3] - pad)
+        c.create_oval(*ring_box, outline="#2a303a", width=th)
+        if ratio > 0.002:
+            c.create_line(*arc_points(ring_box, 90, -360 * ratio), fill=color,
+                          width=th, capstyle=tk.ROUND, joinstyle=tk.ROUND, smooth=True)
+        time_px = max(12, int(d * 0.26))
+        c.create_text(w / 2, h / 2 - d * 0.035, text=time_text, fill=ui.TEXT,
+                      font=ui.pixel_font(time_px, "bold"), anchor="center")
+        if d > 110:
+            c.create_text(w / 2, h / 2 + d * 0.19, text=label, fill=ui.TEXT_DIM,
+                          font=ui.pixel_font(max(8, int(d * 0.06))), anchor="center")
+        icon_px = max(10, int(d * 0.075))
+        c.create_text(w - 8, 7, text="⚙", anchor="ne", fill=ui.TEXT_FAINT,
+                      font=ui.pixel_font(icon_px), tags="gear")
+        c.create_text(w - 8, h - 7, text="⤢", anchor="se", fill=ui.TEXT_FAINT,
+                      font=ui.pixel_font(icon_px), tags="restore")
+        c.tag_bind("gear", "<Button-1>", lambda _e: self.app.open_settings())
+        c.tag_bind("restore", "<Button-1>", lambda _e: self.restore_size())
+
+    def _mini_values(self, snap: Snapshot | None) -> tuple[str, str, str, float]:
+        if snap is None:
+            return "--:--", t("until_reminder"), ui.TEXT_FAINT, 0.0
+        if snap.phase is Phase.PAUSED:
+            return t("paused_ring"), "", "#3a404c", 1.0
+        if snap.phase is Phase.BREAK:
+            total = max(1.0, snap.break_total)
+            return (ui.fmt_clock(snap.break_remaining), t("break_countdown"),
+                    ui.WARN, max(0.001, min(1.0, snap.break_remaining / total)))
+        sit = snap.sitting_seconds
+        limit = max(1.0, snap.sit_limit)
+        ratio = max(0.001, min(1.0, sit / limit))
+        if snap.posture == "standing":
+            return ui.fmt_clock(max(0.0, limit - sit)), t("standing_heading"), ui.GOOD, ratio
+        if not snap.present:
+            return ui.fmt_clock(max(0.0, limit - sit)), t("away_heading"), "#5b6474", ratio
+        color = ui.DANGER if ratio >= 1.0 else (ui.WARN if ratio >= 0.8 else ui.ACCENT)
+        return ui.fmt_clock(max(0.0, limit - sit)), t("until_reminder"), color, ratio
 
     # ---- 刷新 ----
     def refresh(self, snap: Snapshot, camera_state: str) -> None:
+        self._last_snap = snap
+        self._last_camera_state = camera_state
+        if self._mode == "mini":
+            self._draw_mini()
+        elif self._mode == "full":
+            self._refresh_full(snap, camera_state)
+
+    def _refresh_full(self, snap: Snapshot, camera_state: str) -> None:
         phase = snap.phase
         sit = snap.sitting_seconds
         limit = snap.sit_limit
@@ -266,14 +446,16 @@ class MainWindow:
         if phase is Phase.PAUSED:
             heading = t("paused_heading")
             sub = t("paused_sub")
-            self.ring.update_meter(ratio=1.0, time_text=t("paused_ring"), label=t("paused_heading"), sub="",
+            self.ring.update_meter(ratio=1.0, time_text=t("paused_ring"),
+                                   label=t("paused_heading"), sub="",
                                    color="#3a404c", dim=True)
             self.btn_pause.configure_text(t("resume"), "▶")
         elif phase is Phase.BREAK:
             heading = t("break_heading")
             sub = t("break_sub")
             self.ring.update_meter(ratio=1.0, time_text=ui.fmt_clock(snap.break_remaining),
-                                   label=t("break_countdown"), sub=t("get_up"), color=ui.WARN)
+                                   label=t("break_countdown"), sub=t("get_up"),
+                                   color=ui.WARN)
             self.btn_pause.configure_text(t("pause"))
         else:
             if standing:
@@ -285,7 +467,9 @@ class MainWindow:
                 else:
                     sub = t("standing_sub", n=int(snap.standing_seconds))
                 self.ring.update_meter(ratio=0.001, time_text=ui.fmt_clock(sit),
-                                       label=t("sit_elapsed"), sub=t("standing_seconds", n=int(snap.standing_seconds)),
+                                       label=t("sit_elapsed"),
+                                       sub=t("standing_seconds",
+                                             n=int(snap.standing_seconds)),
                                        color=ui.GOOD)
             else:
                 if ratio >= 1.0:
@@ -297,20 +481,22 @@ class MainWindow:
                 else:
                     heading = t("focus_heading")
                     sub = t("focus_sub")
-                color = ui.DANGER if ratio >= 1.0 else (ui.WARN if ratio >= 0.8 else ui.ACCENT)
+                color = (ui.DANGER if ratio >= 1.0
+                         else (ui.WARN if ratio >= 0.8 else ui.ACCENT))
                 if not snap.present and camera_state == "ok":
                     heading = t("away_heading")
                     sub = t("away_sub")
                     color = "#5b6474"
-                self.ring.update_meter(ratio=ratio, time_text=ui.fmt_clock(snap.sit_limit - sit),
-                                       label=t("until_reminder"), sub=t("sat_for", t=ui.fmt_clock(sit)),
+                self.ring.update_meter(ratio=ratio,
+                                       time_text=ui.fmt_clock(snap.sit_limit - sit),
+                                       label=t("until_reminder"),
+                                       sub=t("sat_for", t=ui.fmt_clock(sit)),
                                        color=color)
             self.btn_pause.configure_text(t("pause"))
 
         self.lbl_heading.configure(text=heading)
         self.lbl_sub.configure(text=sub)
 
-        # 在场 / 姿态
         if camera_state == "ok":
             if standing:
                 self.lbl_presence.configure(
@@ -354,7 +540,7 @@ class MainWindow:
         self.stat_vars["rem"].set(t("times", n=stats.reminders))
 
     def update_preview(self, snap: CameraSnapshot, present: bool) -> None:
-        if self.app.config.show_preview:
+        if self._mode == "full" and self.app.config.show_preview:
             self.preview.update_frame(snap, present)
 
     def show_toast(self, text: str, color: str = ui.ACCENT, ms: int = 2600) -> None:
@@ -370,7 +556,9 @@ class MainWindow:
         self.toast.place_forget()
 
     def set_camera_button(self, enabled: bool) -> None:
-        self.btn_camera.configure_text(t("camera_off_btn") if enabled else t("camera_on_btn"))
+        if hasattr(self, "btn_camera"):
+            self.btn_camera.configure_text(
+                t("camera_off_btn") if enabled else t("camera_on_btn"))
 
 
 # ---------------------------------------------------------------------------

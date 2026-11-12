@@ -130,7 +130,6 @@ class App:
         except tk.TclError:
             pass
         self.root.focus_force()
-        ui.center_window(self.root, ui.dp(420), ui.dp(524), anchor="topright")
 
     def hide_window(self) -> None:
         if self._tray is None:
@@ -152,6 +151,7 @@ class App:
             return
         self._quitting = True
         try:
+            self._capture_window_size()
             self._save_stats()
             save_config(self.config)
         except Exception:  # noqa: BLE001
@@ -420,6 +420,18 @@ class App:
         self.engine.snooze()
         self._save_stats()
 
+    def _capture_window_size(self) -> None:
+        try:
+            if self.root.state() in ("iconic", "withdrawn", "zoomed"):
+                return
+            w = int(self.root.winfo_width())
+            h = int(self.root.winfo_height())
+            if w > 1 and h > 1:
+                self.config.window_width = max(150, min(2000, int(round(w / ui.SCALE))))
+                self.config.window_height = max(150, min(2000, int(round(h / ui.SCALE))))
+        except tk.TclError:
+            pass
+
     def open_settings(self) -> None:
         self.settings_window.open()
 
@@ -433,12 +445,14 @@ class App:
             return
         self.config.language = lang
         i18n.set_language(lang)
+        self._capture_window_size()
         save_config(self.config)
         try:
             self.settings_window.close()
             self.calibration_window.close()
             if self.overlay.win is not None:
                 self.overlay.close()
+            self.main.destroy()
             for child in list(self.root.winfo_children()):
                 child.destroy()
             self.main = MainWindow(self, self.root)

@@ -12,11 +12,13 @@ from screenshots import capture, windows_of  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 BASE = {"demo_mode": True, "sound": False, "language": "en"}
+MULTI = {"SITGUARD_ALLOW_MULTI": "1"}
 
 
 def run(extra, out_name, title_part=""):
     env = {k: v for k, v in os.environ.items() if not k.startswith("SITGUARD_")}
     env["SITGUARD_OVERRIDE"] = json.dumps(BASE)
+    env.update(MULTI)
     env.update({k: v for k, v in extra.items() if k.startswith("SITGUARD_")})
     env["SITGUARD_FAKE_SIT"] = "1613"
     proc = subprocess.Popen([PY, str(ROOT / "main.py"), "--demo"], cwd=str(ROOT),

@@ -50,7 +50,10 @@ def main() -> int:
         except Exception:  # noqa: BLE001
             log.exception("调试配置覆盖失败")
 
-    handle, already = acquire_single_instance()
+    if os.environ.get("SITGUARD_ALLOW_MULTI"):
+        handle, already = None, False
+    else:
+        handle, already = acquire_single_instance()
     if already:
         log.info("已有实例在运行，退出本次启动")
         try:

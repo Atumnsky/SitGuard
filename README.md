@@ -27,6 +27,11 @@ as soon as you stand.
 - **Bilingual UI** — 中文 / English, switchable instantly in Settings.
 - **High-DPI ready** — per-monitor V2 awareness with crisp rendering on
   3.5K/200% displays.
+- **Free resizing, timer-only mini mode** — drag the window to any size; below
+  the full layout it collapses to a large timer. Double-click it (or click ⤢)
+  to restore. The window size is remembered between runs.
+
+![Mini timer](screenshots/mini.png)
 - **Tray, autostart, daily stats**, single instance, fully local processing.
 - **Camera auto-recovery** — if the feed stalls or the device drops after hours
   of running, a watchdog reconnects automatically; detectors are rebuilt hourly.

@@ -89,6 +89,25 @@ def mono_font(size: int, weight: str = "bold") -> tkfont.Font:
     return font
 
 
+def pixel_font(px: int, weight: str = "normal") -> tkfont.Font:
+    """按像素指定字号（mini 计时器随窗口缩放用）。"""
+    px = max(6, int(px))
+    key = ("px", px, weight)
+    if key in _FONT_CACHE:
+        return _FONT_CACHE[key]
+    font = None
+    for family in (FONT_FAMILY, FONT_FALLBACK, "Consolas"):
+        try:
+            font = tkfont.Font(family=family, size=-px, weight=weight)
+            break
+        except tk.TclError:
+            continue
+    if font is None:
+        font = tkfont.Font(size=-px, weight=weight)
+    _FONT_CACHE[key] = font
+    return font
+
+
 def emoji_font(size: int = 11) -> tkfont.Font:
     try:
         return tkfont.Font(family=FONT_EMOJI, size=size)
