@@ -356,6 +356,7 @@ class App:
             self._check_power(now)
             self.engine.tick(now)
             self._track_posture(now)
+            self._track_activity()
             try:
                 view = bool(self.root.winfo_exists()) and self.root.state() != "withdrawn"
             except tk.TclError:
@@ -374,13 +375,17 @@ class App:
                 except tk.TclError:
                     pass
 
-    def _refresh(self, now: float) -> None:
+    def _track_activity(self) -> None:
         pose_ok = self._camera_snapshot.status.pose_ok
         snap = self.engine.snapshot(self._camera_state, self._camera_message, pose_ok)
         kind = ("paused" if snap.phase is Phase.PAUSED
                 else ("standing" if snap.posture == "standing"
                       else ("sitting" if snap.present else "away")))
         self.activity.update(kind)
+
+    def _refresh(self, now: float) -> None:
+        pose_ok = self._camera_snapshot.status.pose_ok
+        snap = self.engine.snapshot(self._camera_state, self._camera_message, pose_ok)
         self.main.refresh(snap, self._camera_state)
         if now - self._last_preview >= PREVIEW_MS / 1000.0:
             self._last_preview = now

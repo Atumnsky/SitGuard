@@ -30,11 +30,14 @@ as soon as you stand.
   confirms it; the main window stays in the tray. Sitting down or standing up
   also gets a short bottom-right note with how long you were in the previous
   posture.
-- **Unlimited activity history** — see when you first sat, how long you
-  sat/stood/were away, and open any past date from a scrollable record list.
+- **Unlimited activity history** — every sitting/standing/away segment keeps
+  its start and end time. The day-detail table lists when you sat down, stood
+  up or left, plus a 7-day average and a color legend (sit / stand / away).
+  Open any past date from a scrollable record list.
 - **Silent / power-save mode** — one click on the main window, or automatic
   on battery power: no sounds, no full-screen overlay, only bottom-right
-  toasts, with lower camera sampling to save power.
+  toasts, with lower camera sampling to save power. Activity is recorded even
+  while the window is hidden in the tray.
 - **Bounded window size** — the window can be resized but no longer stretches
   to a mostly empty full screen; restoring keeps it on the current monitor.
 - **Custom alert sound** — choose any `.wav` file, or keep the built-in tone.

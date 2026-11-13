@@ -1224,8 +1224,8 @@ class CalibrationWindow:
 class HistoryWindow:
     """活动统计：任意日期时间轴 + 全部历史记录（无限保留）。"""
 
-    COLORS = {"sitting": ui.ACCENT, "standing": ui.GOOD,
-              "away": "#4a5260", "paused": "#2f3540"}
+    COLORS = {"sitting": "#5ee0d0", "standing": "#f0b45a",
+              "away": "#8a93a3", "paused": "#2f3540"}
 
     def __init__(self, app, root: tk.Tk):
         self.app = app
@@ -1236,7 +1236,8 @@ class HistoryWindow:
         self.cards: dict[str, tk.StringVar] = {}
         self.canvas: tk.Canvas | None = None
         self.tree = None
-        self.scroll = None
+        self.events = None
+        self.lbl_avg = None
         self.entry = None
         self.lbl_first: tk.Label | None = None
         self.lbl_date: tk.Label | None = None
@@ -1254,7 +1255,7 @@ class HistoryWindow:
         win.title(t("stats_title"))
         win.configure(bg=ui.BG)
         win.resizable(False, False)
-        ui.center_window(win, ui.dp(800), ui.dp(720), anchor="center")
+        ui.center_window(win, ui.dp(880), ui.dp(790), anchor="center")
         win.protocol("WM_DELETE_WINDOW", self.close)
 
         head = tk.Frame(win, bg=ui.BG)
@@ -1304,16 +1305,29 @@ class HistoryWindow:
         self.lbl_hint = tk.Label(info, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
                                  font=ui.ui_font(8))
         self.lbl_hint.pack(side="right")
+        self.lbl_avg = tk.Label(win, text="", fg=ui.TEXT_DIM, bg=ui.BG,
+                                font=ui.ui_font(8))
+        self.lbl_avg.pack(anchor="w", padx=ui.dp(24), pady=(ui.dp(4), 0))
 
         tk.Label(win, text=t("stats_today_timeline"), fg=ui.TEXT_DIM, bg=ui.BG,
                  font=ui.ui_font(9, "bold")).pack(anchor="w", padx=ui.dp(24),
                                                   pady=(ui.dp(8), ui.dp(2)))
-        self.canvas = tk.Canvas(win, width=ui.dp(752), height=ui.dp(100),
+        self.canvas = tk.Canvas(win, width=ui.dp(832), height=ui.dp(96),
                                 bg=ui.BG, highlightthickness=0, bd=0)
         self.canvas.pack(padx=ui.dp(24))
+        legend = tk.Frame(win, bg=ui.BG)
+        legend.pack(anchor="w", padx=ui.dp(24), pady=(ui.dp(2), ui.dp(2)))
+        for kind, label in (("sitting", t("stats_sitting")),
+                            ("standing", t("stats_standing")),
+                            ("away", t("stats_away"))):
+            dot = tk.Canvas(legend, width=ui.dp(10), height=ui.dp(10),
+                            bg=self.COLORS[kind], highlightthickness=0, bd=0)
+            dot.pack(side="left", padx=(0 if kind == "sitting" else ui.dp(12), ui.dp(4)))
+            tk.Label(legend, text=label, fg=ui.TEXT_FAINT, bg=ui.BG,
+                     font=ui.ui_font(8)).pack(side="left")
 
         title_row = tk.Frame(win, bg=ui.BG)
-        title_row.pack(fill="x", padx=ui.dp(24), pady=(ui.dp(8), ui.dp(2)))
+        title_row.pack(fill="x", padx=ui.dp(24), pady=(ui.dp(6), ui.dp(2)))
         tk.Label(title_row, text=t("stats_all"), fg=ui.TEXT_DIM, bg=ui.BG,
                  font=ui.ui_font(9, "bold")).pack(side="left")
         self.lbl_date = tk.Label(title_row, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
@@ -1327,8 +1341,8 @@ class HistoryWindow:
             pass
         style.configure("Stats.Treeview", background=ui.BG_2,
                         fieldbackground=ui.BG_2, foreground=ui.TEXT,
-                        rowheight=ui.dp(24), borderwidth=0,
-                        font=ui.ui_font(9))
+                        rowheight=ui.dp(23), borderwidth=0,
+                        font=ui.ui_font(8))
         style.configure("Stats.Treeview.Heading", background=ui.BG_3,
                         foreground=ui.TEXT_FAINT, relief="flat",
                         font=ui.ui_font(8))
@@ -1340,26 +1354,52 @@ class HistoryWindow:
         style.map("Stats.Vertical.TScrollbar",
                   background=[("active", ui.BORDER)])
 
-        wrap = tk.Frame(win, bg=ui.BG)
-        wrap.pack(fill="both", expand=True, padx=ui.dp(24), pady=(0, ui.dp(12)))
-        cols = ("date", "sit", "stand", "away")
-        tree = ttk.Treeview(wrap, columns=cols, show="headings", height=7,
-                            style="Stats.Treeview", selectmode="browse")
+        bottom = tk.Frame(win, bg=ui.BG)
+        bottom.pack(fill="both", expand=True, padx=ui.dp(24), pady=(0, ui.dp(10)))
+        left = tk.Frame(bottom, bg=ui.BG)
+        left.pack(side="left", fill="both", expand=True, padx=(0, ui.dp(8)))
+        right = tk.Frame(bottom, bg=ui.BG)
+        right.pack(side="left", fill="both", expand=True)
+        tk.Label(right, text=t("stats_details"), fg=ui.TEXT_FAINT, bg=ui.BG,
+                 font=ui.ui_font(8)).pack(anchor="w")
+
+        tree = ttk.Treeview(left, columns=("date", "sit", "stand", "away"),
+                            show="headings", height=7, style="Stats.Treeview",
+                            selectmode="browse")
         tree.heading("date", text=t("stats_date"))
         tree.heading("sit", text=t("stats_sitting"))
         tree.heading("stand", text=t("stats_standing"))
         tree.heading("away", text=t("stats_away"))
-        tree.column("date", width=ui.dp(260), anchor="w")
-        for c in cols[1:]:
-            tree.column(c, width=ui.dp(140), anchor="e")
-        scroll = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview,
-                                style="Stats.Vertical.TScrollbar")
-        tree.configure(yscrollcommand=scroll.set)
+        tree.column("date", width=ui.dp(108), anchor="w")
+        for c in ("sit", "stand", "away"):
+            tree.column(c, width=ui.dp(58), anchor="e")
+        tree_scroll = ttk.Scrollbar(left, orient="vertical", command=tree.yview,
+                                   style="Stats.Vertical.TScrollbar")
+        tree.configure(yscrollcommand=tree_scroll.set)
         tree.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
-        self.scroll = scroll
+        tree_scroll.pack(side="right", fill="y")
         tree.bind("<<TreeviewSelect>>", self._on_select)
         self.tree = tree
+        self.tree_scroll = tree_scroll
+
+        events = ttk.Treeview(right, columns=("time", "state", "dur"),
+                              show="headings", height=7, style="Stats.Treeview",
+                              selectmode="none")
+        events.heading("time", text=t("stats_time"))
+        events.heading("state", text=t("stats_state"))
+        events.heading("dur", text=t("stats_duration"))
+        events.column("time", width=ui.dp(130), anchor="w")
+        events.column("state", width=ui.dp(62), anchor="w")
+        events.column("dur", width=ui.dp(62), anchor="e")
+        ev_scroll = ttk.Scrollbar(right, orient="vertical", command=events.yview,
+                                  style="Stats.Vertical.TScrollbar")
+        events.configure(yscrollcommand=ev_scroll.set)
+        events.pack(side="left", fill="both", expand=True)
+        ev_scroll.pack(side="right", fill="y")
+        for kind, color in self.COLORS.items():
+            events.tag_configure(kind, foreground=color)
+        self.events = events
+        self.events_scroll = ev_scroll
 
         self.refresh()
 
@@ -1448,7 +1488,28 @@ class HistoryWindow:
             text=t("stats_first_sit", time=datetime.fromtimestamp(first).strftime("%H:%M"))
             if first else t("stats_first_sit_none"))
         self.lbl_date.configure(text=key)
-        self._hint("" if tracker.segments_for(key, now) else t("stats_no_record"))
+        notes = []
+        if not tracker.segments_for(key, now):
+            notes.append(t("stats_no_record"))
+        if key == date.today().isoformat():
+            diff = self.app.engine.stats.sitting_seconds - totals.get("sitting", 0)
+            if diff > 60:
+                notes.append(t("stats_unaccounted", d=fmt_span(diff)))
+        self._hint(" · ".join(notes))
+        days7 = tracker.recent(7, now)
+        vals = [tracker.totals_for(d, now) for d in days7]
+        active = [v for v in vals if sum(v.values()) > 0]
+        if active and self.lbl_avg is not None:
+            n = len(active)
+            avg = {k: sum(v.get(k, 0) for v in active) / n
+                   for k in ("sitting", "standing", "away")}
+            self.lbl_avg.configure(text=t(
+                "stats_avg7", sit=fmt_span(avg["sitting"]),
+                stand=fmt_span(avg["standing"]), away=fmt_span(avg["away"]),
+                n=n))
+        elif self.lbl_avg is not None:
+            self.lbl_avg.configure(text=t("stats_avg7_none"))
+        self._fill_events(key, now)
 
         if self.canvas is not None:
             c = self.canvas
@@ -1470,6 +1531,20 @@ class HistoryWindow:
             if key == date.today().isoformat():
                 nx = x0 + width * min(1.0, (now - midnight) / 86400.0)
                 c.create_line(nx, y0 - ui.dp(4), nx, y0 + h, fill=ui.TEXT)
+
+    def _fill_events(self, key: str, now: float) -> None:
+        if self.events is None:
+            return
+        self.events.delete(*self.events.get_children())
+        for start, end, kind in self.app.activity.segments_for(key, now):
+            if end - start < 60:
+                continue
+            self.events.insert("", "end", tags=(kind,), values=(
+                datetime.fromtimestamp(start).strftime("%H:%M") + "–"
+                + datetime.fromtimestamp(end).strftime("%H:%M"),
+                t("event_" + kind),
+                fmt_span(end - start),
+            ))
 
     def _fill_tree(self) -> None:
         if self.tree is None:
@@ -1506,10 +1581,10 @@ class HistoryWindow:
                 self.tree.see(item)
                 break
         if len(self.tree.get_children()) > 7:
-            if not self.scroll.winfo_ismapped():
-                self.scroll.pack(side="right", fill="y")
+            if not self.tree_scroll.winfo_ismapped():
+                self.tree_scroll.pack(side="right", fill="y")
         else:
-            self.scroll.pack_forget()
+            self.tree_scroll.pack_forget()
 
     def refresh(self) -> None:
         if self.win is None:
