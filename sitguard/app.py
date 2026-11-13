@@ -89,6 +89,7 @@ class App:
         self._posture_candidate: str | None = None
         self._posture_since = 0.0
         self._confirmed_posture: str | None = None
+        self._posture_confirmed_at = 0.0
         self._last_posture_sound = 0.0
         self._last_stats_save = time.monotonic()
         self._last_preview = 0.0
@@ -530,15 +531,37 @@ class App:
                 and posture != self._confirmed_posture
                 and now - self._posture_since >= 1.2):
             previous = self._confirmed_posture
+            previous_at = self._posture_confirmed_at
             self._confirmed_posture = posture
-            if (previous is not None and not self.is_silent()
-                    and self.config.sound and not self.manual_posture
+            self._posture_confirmed_at = now
+            if (previous is not None and not self.manual_posture
                     and now - self._last_posture_sound > 6.0):
                 self._last_posture_sound = now
+                seconds = max(0.0, now - previous_at) if previous_at else 0.0
                 if posture == "standing" and previous == "sitting":
-                    sound.stand_sound(self.config.stand_sound)
+                    if not self.is_silent() and self.config.sound:
+                        sound.stand_sound(self.config.stand_sound)
+                    self._posture_toast("stand", seconds)
                 elif posture == "sitting" and previous == "standing":
-                    sound.sit_sound(self.config.sit_sound)
+                    if not self.is_silent() and self.config.sound:
+                        sound.sit_sound(self.config.sit_sound)
+                    self._posture_toast("sit", seconds)
+
+    def _posture_toast(self, kind: str, seconds: float) -> None:
+        """站起/坐下时在右下角说一句，带上刚才坐了/站了多久。"""
+        import random
+
+        if seconds >= 60:
+            key = ("toast_stand_detected" if kind == "stand"
+                   else "toast_sit_detected")
+            text = i18n.t(key, d=i18n.fmt_duration(seconds))
+        else:
+            keys = (("toast_stand_short", "toast_stand_fun1", "toast_stand_fun2")
+                    if kind == "stand"
+                    else ("toast_sit_short", "toast_sit_fun1", "toast_sit_fun2"))
+            text = i18n.t(random.choice(keys))
+        color = ui.GOOD if kind == "stand" else ui.ACCENT
+        self.notify(text, color, ms=2800)
 
     def open_sound_settings(self) -> None:
         self.sound_window.open()
