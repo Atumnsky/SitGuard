@@ -130,6 +130,17 @@ class ActivityTracker:
         segs.sort(key=lambda x: x[0])
         return segs
 
+    def seconds_between(self, kind: str, start: float, end: float,
+                        now: float | None = None) -> float:
+        """统计 [start, end) 内某状态的时长，支持跨午夜。"""
+        total = 0.0
+        for key in {_day_key(start), _day_key(end)}:
+            for s, e, k in self.segments_for(key, now):
+                if k != kind:
+                    continue
+                total += max(0.0, min(e, end) - max(s, start))
+        return total
+
     def totals_for(self, key: str, now: float | None = None) -> dict[str, float]:
         totals = {k: 0.0 for k in KINDS}
         for start, end, kind in self.segments_for(key, now):

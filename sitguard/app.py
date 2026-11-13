@@ -91,6 +91,9 @@ class App:
         self._confirmed_posture: str | None = None
         self._posture_confirmed_at = 0.0
         self._last_posture_sound = 0.0
+        self._stand_goal_started = time.monotonic()
+        self._stand_goal_last = 0.0
+        self._last_stand_check = 0.0
         self._last_stats_save = time.monotonic()
         self._last_preview = 0.0
         self._tray = None
@@ -357,6 +360,7 @@ class App:
             self.engine.tick(now)
             self._track_posture(now)
             self._track_activity()
+            self._check_stand_goal(now)
             try:
                 view = bool(self.root.winfo_exists()) and self.root.state() != "withdrawn"
             except tk.TclError:
@@ -524,6 +528,44 @@ class App:
         if self._booted:
             key = "toast_silent_on" if active else "toast_silent_off"
             self.notify(i18n.t(key), ui.ACCENT if active else ui.TEXT_DIM)
+
+    def _check_stand_goal(self, now: float) -> None:
+        """滚动窗口内站立不足时给一次温和提醒。"""
+        cfg = self.config
+        if not cfg.stand_goal_enabled:
+            return
+        if now - self._last_stand_check < 20.0:
+            return
+        self._last_stand_check = now
+        window = cfg.stand_goal_window_minutes * 60.0
+        if now - self._stand_goal_started < window:
+            return
+        if self.engine.phase in (Phase.BREAK, Phase.PAUSED):
+            return
+        snap = self.engine.snapshot(self._camera_state, self._camera_message,
+                                    self._camera_snapshot.status.pose_ok)
+        if not snap.present or snap.posture == "standing":
+            return
+        end = time.time()
+        start = end - window
+        standing = self.activity.seconds_between("standing", start, end)
+        sitting = self.activity.seconds_between("sitting", start, end)
+        if sitting < min(1800.0, window * 0.3):
+            return
+        goal = cfg.stand_goal_minutes * 60.0
+        if standing >= goal:
+            self._stand_goal_last = 0.0
+            return
+        repeat = cfg.stand_goal_repeat_minutes * 60.0
+        if self._stand_goal_last and now - self._stand_goal_last < repeat:
+            return
+        self._stand_goal_last = now
+        self.notify(i18n.t("toast_stand_goal", w=cfg.stand_goal_window_minutes,
+                           s=i18n.fmt_duration(standing)), ui.WARN, ms=4500)
+        if cfg.sound and not self.is_silent():
+            sound.reminder_sound(cfg.sound_file, cfg.sound_name)
+        log.info("站立不足提醒：%.0f 秒 / %d 分钟窗口", standing,
+                 cfg.stand_goal_window_minutes)
 
     def _track_posture(self, now: float) -> None:
         snap = self.engine.snapshot(self._camera_state, self._camera_message,

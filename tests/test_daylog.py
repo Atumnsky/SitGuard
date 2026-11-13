@@ -80,6 +80,19 @@ class TestActivityTracker(unittest.TestCase):
         self.now += 60
         keys = self.tracker.all_days(self.now)
         self.assertIn(datetime.fromtimestamp(self.now).date().isoformat(), keys)
+
+    def test_seconds_between(self):
+        t = self.tracker
+        t.update("sitting", self.now)
+        self.now += 600
+        t.update("standing", self.now)
+        self.now += 120
+        t.update("sitting", self.now)
+        end = self.now
+        stand = t.seconds_between("standing", end - 900, end)
+        self.assertAlmostEqual(stand, 120, delta=1)
+        sit = t.seconds_between("sitting", end - 900, end)
+        self.assertAlmostEqual(sit, 600, delta=1)
     def test_persisted_shape(self):
         self.tracker.update("sitting", self.now)
         self.now += 60

@@ -74,6 +74,10 @@ class Config:
     stand_sound: str = "stand_up" # 站起提示音
     silent_mode: bool = False     # 静默模式：无声音、无全屏，只右下角提示
     auto_silent_on_battery: bool = True
+    stand_goal_enabled: bool = True
+    stand_goal_window_minutes: int = 90
+    stand_goal_minutes: int = 10
+    stand_goal_repeat_minutes: int = 30
     overlay_enabled: bool = True    # 是否显示全屏提醒；关闭则只响铃
     sound_repeat: int = 3            # 提醒音重复次数
     snooze_minutes: int = 5          # 临时推迟
@@ -114,6 +118,10 @@ class Config:
         c.stand_sound = str(c.stand_sound or "stand_up")
         c.silent_mode = bool(c.silent_mode)
         c.auto_silent_on_battery = bool(c.auto_silent_on_battery)
+        c.stand_goal_enabled = bool(c.stand_goal_enabled)
+        c.stand_goal_window_minutes = int(clamp(c.stand_goal_window_minutes, 30, 240))
+        c.stand_goal_minutes = int(clamp(c.stand_goal_minutes, 5, 60))
+        c.stand_goal_repeat_minutes = int(clamp(c.stand_goal_repeat_minutes, 10, 120))
         c.overlay_enabled = bool(c.overlay_enabled)
         c.snooze_minutes = int(clamp(c.snooze_minutes, 1, 120))
         c.auto_snooze_minutes = int(clamp(c.auto_snooze_minutes, 1, 30))

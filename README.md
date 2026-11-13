@@ -24,6 +24,9 @@ as soon as you stand.
   12 seconds, or click a button (instant).
 - **3-minute rule** — standing for 3 minutes before the reminder restarts the
   sitting timer from zero.
+- **Stand goal** — if you stand for less than 10 minutes across any rolling
+  90-minute window, a gentle toast and sound nudge you to move (can be turned
+  off in Settings).
 - **Sound-only mode** — hide the full-screen reminder; the app still plays
   the alert and re-reminds you every 5 minutes while you keep sitting.
 - **No main-window pop-up** — after you stand, only a small desktop toast
@@ -118,6 +121,7 @@ frame” and treats losing sight of you as standing up.
 | Restart sitting after standing | 3 min | Standing this long restarts the sitting timer |
 | Camera index | 0 | Try 1 for an external camera |
 | Restart camera every | 0 (off) | Periodic soft reset for unstable drivers; try 45 min |
+| Stand goal | on | Nudge when standing < 10 min in the last 90 min |
 | Face detection sensitivity | 0.60 | Lower = more sensitive |
 | Full-screen reminder | on | Off = sound only, with a repeat every 5 minutes |
 | Silent on battery | on | Auto silent/power-save when unplugged |
