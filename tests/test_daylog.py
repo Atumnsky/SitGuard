@@ -62,6 +62,24 @@ class TestActivityTracker(unittest.TestCase):
         self.assertGreater(s2, 0)
         self.assertAlmostEqual(s1 + s2, 180, delta=1)
 
+
+    def test_merge_adjacent_segments(self):
+        t = self.tracker
+        t.update("sitting", self.now)
+        for _ in range(3):
+            self.now += 30
+            t.save()
+        key = datetime.fromtimestamp(self.now).date().isoformat()
+        segs = t.segments_for(key, self.now)
+        sitting = [s for s in segs if s[2] == "sitting"]
+        self.assertLessEqual(len(sitting), 2)
+        self.assertGreaterEqual(sum(e - s for s, e, k in sitting), 85)
+
+    def test_all_days(self):
+        self.tracker.update("sitting", self.now)
+        self.now += 60
+        keys = self.tracker.all_days(self.now)
+        self.assertIn(datetime.fromtimestamp(self.now).date().isoformat(), keys)
     def test_persisted_shape(self):
         self.tracker.update("sitting", self.now)
         self.now += 60

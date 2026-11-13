@@ -48,6 +48,37 @@ def configure_scale(dpi: float, root: tk.Misc | None = None) -> float:
     return SCALE
 
 
+def work_area(hwnd: int) -> tuple[int, int, int, int] | None:
+    """返回窗口所在显示器的工作区（排除任务栏）。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class RECT(ctypes.Structure):
+            _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                        ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
+                        ("rcWork", RECT), ("dwFlags", wintypes.DWORD)]
+
+        user32 = ctypes.windll.user32
+        user32.MonitorFromWindow.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+        user32.MonitorFromWindow.restype = ctypes.c_void_p
+        user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        mon = user32.MonitorFromWindow(ctypes.c_void_p(int(hwnd)), 2)
+        if not mon:
+            return None
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        if not user32.GetMonitorInfoW(ctypes.c_void_p(mon), ctypes.byref(info)):
+            return None
+        r = info.rcWork
+        return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def window_dpi(hwnd: int, fallback: float = 96.0) -> float:
     """读取窗口所在显示器的真实 DPI（跨屏时 Tk 的 winfo_fpixels 可能不更新）。"""
     try:
@@ -240,6 +271,10 @@ class RoundButton(tk.Canvas):
         label = f"{self._icon}  {self._text}" if self._icon else self._text
         self._label = self.create_text(self._btn_w / 2, self._btn_h / 2, text=label,
                                        fill=self._fg_fill(), font=self._font)
+
+    def set_active(self, active: bool) -> None:
+        self._accent = bool(active)
+        self._draw()
 
     def configure_text(self, text: str, icon: str | None = None) -> None:
         self._text = text

@@ -13,14 +13,14 @@ import time
 import tkinter as tk
 from pathlib import Path
 
-from . import autostart, i18n, sound, ui
+from . import autostart, i18n, power, sound, ui
 from .camera import CameraSnapshot, CameraWorker, SimulatedCamera
 from .daylog import ActivityTracker
 from .config import Config, data_dir, load_config, save_config, stats_path
 from .engine import EngineEvent, Phase, SessionEngine, Snapshot
 from .posture import Posture, PostureProfile
 from .views import (BreakOverlay, CalibrationWindow, DesktopToast, HistoryWindow,
-                    MainWindow, SettingsWindow)
+                    MainWindow, SettingsWindow, SoundWindow)
 
 log = logging.getLogger("sitguard.app")
 
@@ -67,6 +67,7 @@ class App:
         self.calibration_window = CalibrationWindow(self, self.root)
         self.overlay = BreakOverlay(self, self.root)
         self.history_window = HistoryWindow(self, self.root)
+        self.sound_window = SoundWindow(self, self.root)
         self.activity = ActivityTracker()
 
         self.camera: CameraWorker | SimulatedCamera | None = None
@@ -81,6 +82,14 @@ class App:
         self._camera_started_at = time.monotonic()
         self._last_camera_restart = 0.0
         self._last_camera_notice = 0.0
+        self._on_battery = power.on_battery()
+        self._last_power_check = time.monotonic()
+        self._silent_active: bool | None = None
+        self._booted = False
+        self._posture_candidate: str | None = None
+        self._posture_since = 0.0
+        self._confirmed_posture: str | None = None
+        self._last_posture_sound = 0.0
         self._last_stats_save = time.monotonic()
         self._last_preview = 0.0
         self._tray = None
@@ -103,6 +112,9 @@ class App:
         self.root.attributes("-topmost", bool(self.config.always_on_top))
 
     def _boot(self) -> None:
+        self._booted = True
+        self._silent_active = None
+        self._sync_silent()
         if self.config.autostart:
             try:
                 if not autostart.ensure_enabled():
@@ -340,7 +352,9 @@ class App:
                     and now - self._camera_started_at
                     >= self.config.camera_restart_minutes * 60.0):
                 self._recover_camera(now, "定时重启")
+            self._check_power(now)
             self.engine.tick(now)
+            self._track_posture(now)
             try:
                 view = bool(self.root.winfo_exists()) and self.root.state() != "withdrawn"
             except tk.TclError:
@@ -385,13 +399,15 @@ class App:
 
     def _handle_event(self, ev: EngineEvent) -> None:
         if ev.kind == "break_start":
-            if self.config.overlay_enabled:
+            silent = self.is_silent()
+            if self.config.overlay_enabled and not silent:
                 self.overlay.show(self.engine.break_total_seconds, ev.detail)
-            if self.config.sound:
+            if self.config.sound and not silent:
                 for i in range(max(1, self.config.sound_repeat)):
                     self.root.after(
                         i * 700,
-                        lambda p=self.config.sound_file: sound.reminder_sound(p))
+                        lambda p=self.config.sound_file, n=self.config.sound_name:
+                        sound.reminder_sound(p, n))
             self.notify(i18n.t("toast_break_start"), ui.WARN, ms=4000)
         elif ev.kind == "break_end":
             self.overlay.close()
@@ -405,12 +421,12 @@ class App:
             else:
                 detail = i18n.t("break_end_timeout")
             self.notify(i18n.t("toast_break_end", d=detail), ui.GOOD, ms=3500)
-            if self.config.sound:
+            if self.config.sound and not self.is_silent() and key != "standing":
                 sound.soft_tick()
             self._save_stats()
         elif ev.kind == "break_repeat":
-            if self.config.sound:
-                sound.reminder_sound(self.config.sound_file)
+            if self.config.sound and not self.is_silent():
+                sound.reminder_sound(self.config.sound_file, self.config.sound_name)
             self.notify(i18n.t("toast_break_repeat", m=ev.detail), ui.WARN, ms=4000)
         elif ev.kind == "away":
             if self.engine.phase is Phase.WATCHING:
@@ -438,7 +454,8 @@ class App:
         if self.engine.phase is Phase.BREAK:
             return
         self.engine.force_break()
-        if self.config.overlay_enabled and self.overlay.win is None:
+        if (self.config.overlay_enabled and not self.is_silent()
+                and self.overlay.win is None):
             self.overlay.show(self.engine.break_total_seconds,
                               i18n.t("test_reminder"))
 
@@ -464,6 +481,67 @@ class App:
                 self.config.window_height = max(150, min(2000, int(round(h / ui.SCALE))))
         except tk.TclError:
             pass
+
+    def is_silent(self) -> bool:
+        return (self.config.silent_mode
+                or (self.config.auto_silent_on_battery and self._on_battery))
+
+    def toggle_silent(self) -> None:
+        was = self.is_silent()
+        self.config.silent_mode = not self.config.silent_mode
+        save_config(self.config)
+        self._sync_silent()
+        if self.is_silent() == was and self.config.auto_silent_on_battery and self._on_battery:
+            self.notify(i18n.t("toast_silent_battery"), ui.TEXT_DIM)
+
+    def _check_power(self, now: float) -> None:
+        if now - self._last_power_check < 30.0:
+            return
+        self._last_power_check = now
+        battery = power.on_battery()
+        if battery != self._on_battery:
+            self._on_battery = battery
+            self._sync_silent()
+
+    def _sync_silent(self) -> None:
+        active = self.is_silent()
+        if active == self._silent_active:
+            self.main.set_silent(active)
+            return
+        self._silent_active = active
+        self.main.set_silent(active)
+        if self.camera is not None and hasattr(self.camera, "set_power_save"):
+            self.camera.set_power_save(active)
+        if active:
+            self.overlay.close()
+        log.info("静默/省电模式：%s（电池=%s）", active, self._on_battery)
+        if self._booted:
+            key = "toast_silent_on" if active else "toast_silent_off"
+            self.notify(i18n.t(key), ui.ACCENT if active else ui.TEXT_DIM)
+
+    def _track_posture(self, now: float) -> None:
+        snap = self.engine.snapshot(self._camera_state, self._camera_message,
+                                    self._camera_snapshot.status.pose_ok)
+        posture = snap.posture if snap.present else None
+        if posture != self._posture_candidate:
+            self._posture_candidate = posture
+            self._posture_since = now
+        if (posture in ("sitting", "standing")
+                and posture != self._confirmed_posture
+                and now - self._posture_since >= 1.2):
+            previous = self._confirmed_posture
+            self._confirmed_posture = posture
+            if (previous is not None and not self.is_silent()
+                    and self.config.sound and not self.manual_posture
+                    and now - self._last_posture_sound > 6.0):
+                self._last_posture_sound = now
+                if posture == "standing" and previous == "sitting":
+                    sound.stand_sound(self.config.stand_sound)
+                elif posture == "sitting" and previous == "standing":
+                    sound.sit_sound(self.config.sit_sound)
+
+    def open_sound_settings(self) -> None:
+        self.sound_window.open()
 
     def open_history(self) -> None:
         self.history_window.open()

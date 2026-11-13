@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import time
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, ttk
 from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 
@@ -172,6 +172,7 @@ class MainWindow:
         root.configure(bg=ui.BG)
         root.resizable(True, True)
         root.minsize(ui.dp(150), ui.dp(150))
+        root.maxsize(ui.dp(600), ui.dp(760))
 
         cfg = app.config
         w = max(ui.dp(150), ui.dp(int(getattr(cfg, "window_width", 420))))
@@ -306,8 +307,20 @@ class MainWindow:
             self._draw_mini()
 
     def restore_size(self) -> None:
-        ui.center_window(self.root, ui.dp(self.DESIGN_W), ui.dp(self.DESIGN_H),
-                         anchor="topright")
+        hwnd = self.root.winfo_id()
+        try:
+            hwnd = int(self.root.tk.call("wm", "frame", self.root._w), 0)
+        except tk.TclError:
+            pass
+        area = ui.work_area(hwnd) or (0, 0,
+                                      self.root.winfo_screenwidth(),
+                                      self.root.winfo_screenheight())
+        w, h = ui.dp(self.DESIGN_W), ui.dp(self.DESIGN_H)
+        cx = self.root.winfo_x() + self.root.winfo_width() // 2
+        cy = self.root.winfo_y() + self.root.winfo_height() // 2
+        x = max(area[0], min(cx - w // 2, area[2] - w))
+        y = max(area[1], min(cy - h // 2, area[3] - h))
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
         self.root.after(50, self._layout)
 
     # ---- 完整布局 ----
@@ -325,6 +338,10 @@ class MainWindow:
                                           width=58, height=28, radius=9, fill=ui.BG_3,
                                           font=ui.ui_font(8), bg=ui.BG)
         self.btn_settings.pack(side="right")
+        self.btn_silent = ui.RoundButton(top, t("silent"), command=self.app.toggle_silent,
+                                         width=46, height=28, radius=9, fill=ui.BG_3,
+                                         font=ui.ui_font(8), bg=ui.BG)
+        self.btn_silent.pack(side="right", padx=(0, ui.dp(6)))
         self.btn_stats = ui.RoundButton(top, t("stats_btn"),
                                         command=self.app.open_history,
                                         width=50, height=28, radius=9, fill=ui.BG_3,
@@ -583,6 +600,11 @@ class MainWindow:
         self._toast_after = None
         self.toast.place_forget()
 
+    def set_silent(self, active: bool) -> None:
+        if hasattr(self, "btn_silent"):
+            self.btn_silent.configure_text(t("silent_active") if active else t("silent"))
+            self.btn_silent.set_active(active)
+
     def set_camera_button(self, enabled: bool) -> None:
         if hasattr(self, "btn_camera"):
             self.btn_camera.configure_text(
@@ -617,9 +639,19 @@ class DesktopToast:
             win.update_idletasks()
             w = max(ui.dp(260), win.winfo_reqwidth())
             h = win.winfo_reqheight()
-            sw = win.winfo_screenwidth()
-            sh = win.winfo_screenheight()
-            win.geometry(f"{w}x{h}+{sw - w - ui.dp(22)}+{sh - h - ui.dp(74)}")
+            area = None
+            try:
+                frame = int(self.root.tk.call("wm", "frame", self.root._w), 0)
+                area = ui.work_area(frame)
+            except (tk.TclError, ValueError):
+                area = None
+            if area is None:
+                sw = win.winfo_screenwidth()
+                sh = win.winfo_screenheight()
+                area = (0, 0, sw, sh)
+            x = max(area[0], area[2] - w - ui.dp(22))
+            y = max(area[1], area[3] - h - ui.dp(18))
+            win.geometry(f"{w}x{h}+{x}+{y}")
             win.deiconify()
             win.lift()
             self.win = win
@@ -847,7 +879,7 @@ class SettingsWindow:
         win.configure(bg=ui.BG)
         win.resizable(False, False)
         win.transient(self.root)
-        ui.center_window(win, ui.dp(440), ui.dp(872), anchor="center")
+        ui.center_window(win, ui.dp(440), ui.dp(880), anchor="center")
         win.protocol("WM_DELETE_WINDOW", self.close)
 
         body = tk.Frame(win, bg=ui.BG)
@@ -885,6 +917,7 @@ class SettingsWindow:
         self._check(body, "chk_pose", "posture_enabled")
         self._check(body, "chk_sound", "sound")
         self._check(body, "chk_overlay", "overlay_enabled")
+        self._check(body, "chk_auto_silent", "auto_silent_on_battery")
         self._check(body, "chk_autostart", "autostart")
         self._check(body, "chk_preview", "show_preview")
         self._check(body, "chk_tray", "minimize_to_tray")
@@ -892,20 +925,13 @@ class SettingsWindow:
 
         sound_row = tk.Frame(body, bg=ui.BG)
         sound_row.pack(fill="x", pady=(ui.dp(6), 0))
-        tk.Label(sound_row, text=t("row_sound_file"), fg=ui.TEXT, bg=ui.BG,
-                 font=ui.ui_font(9)).pack(side="left")
-        self._sound_path = str(getattr(cfg, "sound_file", "") or "")
-        self.lbl_sound = tk.Label(sound_row, text=self._sound_label(), fg=ui.TEXT_FAINT,
-                                  bg=ui.BG, font=ui.ui_font(8), anchor="e")
-        self.lbl_sound.pack(side="right", padx=(ui.dp(6), 0))
-        ui.RoundButton(sound_row, t("sound_pick"), command=self.pick_sound,
-                       width=70, height=26, radius=8, fill=ui.BG_3,
-                       font=ui.ui_font(8)).pack(side="right", padx=(ui.dp(6), 0))
-        ui.RoundButton(sound_row, "▶", command=self.test_sound,
-                       width=30, height=26, radius=8, fill=ui.BG_3,
-                       font=ui.ui_font(8)).pack(side="right")
-        tk.Label(body, text=t("hint_sound_file"), fg=ui.TEXT_FAINT, bg=ui.BG,
-                 font=ui.ui_font(8)).pack(anchor="w", pady=(ui.dp(1), 0))
+        ui.RoundButton(sound_row, t("sound_manage"),
+                       command=self.app.open_sound_settings,
+                       width=132, height=30, radius=9, fill=ui.BG_3,
+                       font=ui.ui_font(9)).pack(side="left")
+        tk.Label(sound_row, text=t("hint_sound_file"), fg=ui.TEXT_FAINT,
+                 bg=ui.BG, font=ui.ui_font(8)).pack(side="left",
+                                                     padx=ui.dp(8))
 
         lang_row = tk.Frame(body, bg=ui.BG)
         lang_row.pack(fill="x", pady=(ui.dp(6), 0))
@@ -976,30 +1002,12 @@ class SettingsWindow:
                             indicatoron=True, relief="flat", padx=ui.dp(2), pady=ui.dp(1))
         cb.pack(anchor="w")
 
-    def _sound_label(self) -> str:
-        if self._sound_path:
-            return Path(self._sound_path).name
-        return t("sound_default")
-
-    def pick_sound(self) -> None:
-        path = filedialog.askopenfilename(
-            parent=self.win, title=t("sound_pick"),
-            filetypes=[("WAV audio", "*.wav"), ("All files", "*.*")])
-        if path:
-            self._sound_path = path
-            self.lbl_sound.configure(text=self._sound_label())
-            self.test_sound()
-
-    def test_sound(self) -> None:
-        from . import sound
-        if self.app.config.sound:
-            sound.reminder_sound(self._sound_path)
-
     def _sync_vars(self) -> None:
         cfg = self.app.config
         self.vars["posture_enabled"].set(cfg.posture_enabled)
         self.vars["sound"].set(cfg.sound)
         self.vars["overlay_enabled"].set(cfg.overlay_enabled)
+        self.vars["auto_silent_on_battery"].set(cfg.auto_silent_on_battery)
         self.vars["autostart"].set(cfg.autostart)
         self.vars["show_preview"].set(cfg.show_preview)
         self.vars["minimize_to_tray"].set(cfg.minimize_to_tray)
@@ -1023,7 +1031,7 @@ class SettingsWindow:
         cfg.posture_enabled = bool(self.vars["posture_enabled"].get())
         cfg.sound = bool(self.vars["sound"].get())
         cfg.overlay_enabled = bool(self.vars["overlay_enabled"].get())
-        cfg.sound_file = self._sound_path
+        cfg.auto_silent_on_battery = bool(self.vars["auto_silent_on_battery"].get())
         cfg.autostart = bool(self.vars["autostart"].get())
         cfg.show_preview = bool(self.vars["show_preview"].get())
         cfg.minimize_to_tray = bool(self.vars["minimize_to_tray"].get())
@@ -1214,7 +1222,7 @@ class CalibrationWindow:
 
 
 class HistoryWindow:
-    """今日时间轴 + 最近 7 天历史记录。"""
+    """活动统计：任意日期时间轴 + 全部历史记录（无限保留）。"""
 
     COLORS = {"sitting": ui.ACCENT, "standing": ui.GOOD,
               "away": "#4a5260", "paused": "#2f3540"}
@@ -1224,11 +1232,16 @@ class HistoryWindow:
         self.root = root
         self.win: tk.Toplevel | None = None
         self._job = None
+        self.selected = date.today().isoformat()
         self.cards: dict[str, tk.StringVar] = {}
         self.canvas: tk.Canvas | None = None
-        self.rows: tk.Frame | None = None
+        self.tree = None
+        self.scroll = None
+        self.entry = None
         self.lbl_first: tk.Label | None = None
-        self.lbl_today_total: tk.Label | None = None
+        self.lbl_date: tk.Label | None = None
+        self.lbl_hint: tk.Label | None = None
+        self._tree_days: list[str] = []
 
     def open(self) -> None:
         if self.win is not None:
@@ -1241,15 +1254,28 @@ class HistoryWindow:
         win.title(t("stats_title"))
         win.configure(bg=ui.BG)
         win.resizable(False, False)
-        ui.center_window(win, ui.dp(760), ui.dp(660), anchor="center")
+        ui.center_window(win, ui.dp(800), ui.dp(720), anchor="center")
         win.protocol("WM_DELETE_WINDOW", self.close)
 
-        tk.Label(win, text=t("stats_title"), fg=ui.TEXT, bg=ui.BG,
-                 font=ui.ui_font(18, "bold")).pack(anchor="w", padx=ui.dp(24),
-                                                    pady=(ui.dp(18), 0))
+        head = tk.Frame(win, bg=ui.BG)
+        head.pack(fill="x", padx=ui.dp(24), pady=(ui.dp(16), 0))
+        tk.Label(head, text=t("stats_title"), fg=ui.TEXT, bg=ui.BG,
+                 font=ui.ui_font(18, "bold")).pack(side="left")
+        self.entry = tk.Entry(head, width=12, bg=ui.BG_3, fg=ui.TEXT,
+                              insertbackground=ui.TEXT, relief="flat",
+                              font=ui.ui_font(9), justify="center")
+        self.entry.pack(side="right", padx=(ui.dp(6), 0))
+        self.entry.insert(0, self.selected)
+        self.entry.bind("<Return>", lambda _e: self._jump())
+        ui.RoundButton(head, t("stats_jump"), command=self._jump,
+                       width=64, height=26, radius=8, fill=ui.BG_3,
+                       font=ui.ui_font(8)).pack(side="right")
+        tk.Label(head, text=t("stats_date"), fg=ui.TEXT_FAINT, bg=ui.BG,
+                 font=ui.ui_font(8)).pack(side="right", padx=(0, ui.dp(6)))
+
         tk.Label(win, text=t("stats_sub"), fg=ui.TEXT_DIM, bg=ui.BG,
                  font=ui.ui_font(9)).pack(anchor="w", padx=ui.dp(24),
-                                          pady=(ui.dp(3), ui.dp(12)))
+                                          pady=(ui.dp(2), ui.dp(8)))
 
         cards = tk.Frame(win, bg=ui.BG)
         cards.pack(fill="x", padx=ui.dp(24))
@@ -1265,27 +1291,76 @@ class HistoryWindow:
             tk.Label(box, textvariable=var, fg=ui.TEXT, bg=ui.BG_2,
                      font=ui.ui_font(15, "bold")).pack(anchor="w",
                                                        padx=ui.dp(12),
-                                                       pady=(ui.dp(8), 0))
+                                                       pady=(ui.dp(7), 0))
             tk.Label(box, text=title, fg=ui.TEXT_FAINT, bg=ui.BG_2,
                      font=ui.ui_font(8)).pack(anchor="w", padx=ui.dp(12),
-                                              pady=(0, ui.dp(8)))
-        self.lbl_first = tk.Label(win, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
+                                              pady=(0, ui.dp(7)))
+
+        info = tk.Frame(win, bg=ui.BG)
+        info.pack(fill="x", padx=ui.dp(24), pady=(ui.dp(6), 0))
+        self.lbl_first = tk.Label(info, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
                                   font=ui.ui_font(8))
-        self.lbl_first.pack(anchor="w", padx=ui.dp(24), pady=(ui.dp(6), 0))
+        self.lbl_first.pack(side="left")
+        self.lbl_hint = tk.Label(info, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
+                                 font=ui.ui_font(8))
+        self.lbl_hint.pack(side="right")
 
         tk.Label(win, text=t("stats_today_timeline"), fg=ui.TEXT_DIM, bg=ui.BG,
                  font=ui.ui_font(9, "bold")).pack(anchor="w", padx=ui.dp(24),
-                                                  pady=(ui.dp(10), ui.dp(4)))
-        self.canvas = tk.Canvas(win, width=ui.dp(712), height=ui.dp(108),
+                                                  pady=(ui.dp(8), ui.dp(2)))
+        self.canvas = tk.Canvas(win, width=ui.dp(752), height=ui.dp(100),
                                 bg=ui.BG, highlightthickness=0, bd=0)
         self.canvas.pack(padx=ui.dp(24))
 
-        tk.Label(win, text=t("stats_history"), fg=ui.TEXT_DIM, bg=ui.BG,
-                 font=ui.ui_font(9, "bold")).pack(anchor="w", padx=ui.dp(24),
-                                                  pady=(ui.dp(8), ui.dp(2)))
-        self.rows = tk.Frame(win, bg=ui.BG)
-        self.rows.pack(fill="both", expand=True, padx=ui.dp(24),
-                       pady=(0, ui.dp(10)))
+        title_row = tk.Frame(win, bg=ui.BG)
+        title_row.pack(fill="x", padx=ui.dp(24), pady=(ui.dp(8), ui.dp(2)))
+        tk.Label(title_row, text=t("stats_all"), fg=ui.TEXT_DIM, bg=ui.BG,
+                 font=ui.ui_font(9, "bold")).pack(side="left")
+        self.lbl_date = tk.Label(title_row, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
+                                 font=ui.ui_font(8))
+        self.lbl_date.pack(side="right")
+
+        style = ttk.Style(win)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("Stats.Treeview", background=ui.BG_2,
+                        fieldbackground=ui.BG_2, foreground=ui.TEXT,
+                        rowheight=ui.dp(24), borderwidth=0,
+                        font=ui.ui_font(9))
+        style.configure("Stats.Treeview.Heading", background=ui.BG_3,
+                        foreground=ui.TEXT_FAINT, relief="flat",
+                        font=ui.ui_font(8))
+        style.map("Stats.Treeview", background=[("selected", ui.ACCENT)],
+                  foreground=[("selected", "#06211f")])
+        style.configure("Stats.Vertical.TScrollbar", background=ui.BG_3,
+                        troughcolor=ui.BG_2, bordercolor=ui.BG_2,
+                        arrowcolor=ui.TEXT_FAINT, relief="flat")
+        style.map("Stats.Vertical.TScrollbar",
+                  background=[("active", ui.BORDER)])
+
+        wrap = tk.Frame(win, bg=ui.BG)
+        wrap.pack(fill="both", expand=True, padx=ui.dp(24), pady=(0, ui.dp(12)))
+        cols = ("date", "sit", "stand", "away")
+        tree = ttk.Treeview(wrap, columns=cols, show="headings", height=7,
+                            style="Stats.Treeview", selectmode="browse")
+        tree.heading("date", text=t("stats_date"))
+        tree.heading("sit", text=t("stats_sitting"))
+        tree.heading("stand", text=t("stats_standing"))
+        tree.heading("away", text=t("stats_away"))
+        tree.column("date", width=ui.dp(260), anchor="w")
+        for c in cols[1:]:
+            tree.column(c, width=ui.dp(140), anchor="e")
+        scroll = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview,
+                                style="Stats.Vertical.TScrollbar")
+        tree.configure(yscrollcommand=scroll.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.scroll = scroll
+        tree.bind("<<TreeviewSelect>>", self._on_select)
+        self.tree = tree
+
         self.refresh()
 
     def close(self) -> None:
@@ -1320,23 +1395,60 @@ class HistoryWindow:
                                     fill=self.COLORS.get(kind, ui.ACCENT),
                                     outline="")
 
-    def refresh(self) -> None:
-        if self.win is None:
+    def _jump(self) -> None:
+        if self.entry is None:
             return
+        text = self.entry.get().strip()
+        try:
+            key = date.fromisoformat(text).isoformat()
+        except ValueError:
+            self._hint(t("stats_bad_date"))
+            return
+        if key > date.today().isoformat():
+            self._hint(t("stats_future"))
+            return
+        self.selected = key
+        self._update_top()
+        for item in self.tree.get_children() if self.tree else []:
+            if self.tree.item(item, "values")[0] == key:
+                self.tree.selection_set(item)
+                self.tree.see(item)
+                break
+
+    def _hint(self, text: str) -> None:
+        if self.lbl_hint is not None:
+            self.lbl_hint.configure(text=text)
+
+    def _on_select(self, _event=None) -> None:
+        if self.tree is None:
+            return
+        sel = self.tree.selection()
+        if not sel:
+            return
+        values = self.tree.item(sel[0], "values")
+        if values:
+            self.selected = str(values[0])
+            if self.entry is not None:
+                self.entry.delete(0, "end")
+                self.entry.insert(0, self.selected)
+            self._update_top()
+
+    def _update_top(self) -> None:
         tracker = self.app.activity
         now = time.time()
-        today = date.today().isoformat()
-        totals = tracker.totals_for(today, now)
+        key = self.selected
+        totals = tracker.totals_for(key, now)
         self.cards["sitting"].set(fmt_span(totals.get("sitting", 0)))
         self.cards["standing"].set(fmt_span(totals.get("standing", 0)))
         self.cards["away"].set(fmt_span(totals.get("away", 0)))
-        self.cards["breaks"].set(t("times", n=self.app.engine.stats.breaks))
-        first = tracker.first_sit(today)
-        if first:
-            self.lbl_first.configure(
-                text=t("stats_first_sit", time=datetime.fromtimestamp(first).strftime("%H:%M")))
-        else:
-            self.lbl_first.configure(text=t("stats_first_sit_none"))
+        self.cards["breaks"].set(t("times", n=self.app.engine.stats.breaks)
+                                  if key == date.today().isoformat() else "—")
+        first = tracker.first_sit(key)
+        self.lbl_first.configure(
+            text=t("stats_first_sit", time=datetime.fromtimestamp(first).strftime("%H:%M"))
+            if first else t("stats_first_sit_none"))
+        self.lbl_date.configure(text=key)
+        self._hint("" if tracker.segments_for(key, now) else t("stats_no_record"))
 
         if self.canvas is not None:
             c = self.canvas
@@ -1344,47 +1456,197 @@ class HistoryWindow:
             c.update_idletasks()
             width = max(100, c.winfo_width() - ui.dp(56))
             x0 = ui.dp(28)
-            y0 = ui.dp(26)
+            y0 = ui.dp(24)
             h = ui.dp(26)
-            midnight = datetime.combine(date.today(), dtime.min).timestamp()
+            midnight = datetime.combine(date.fromisoformat(key), dtime.min).timestamp()
             self._draw_bar(c, x0, y0, width, h,
-                           tracker.segments_for(today, now), midnight)
+                           tracker.segments_for(key, now), midnight)
             for hour in (0, 6, 12, 18, 24):
                 x = x0 + width * hour / 24.0
                 c.create_line(x, y0 + h, x, y0 + h + ui.dp(4), fill=ui.TEXT_FAINT)
                 lx = min(max(x, x0 + ui.dp(16)), x0 + width - ui.dp(16))
                 c.create_text(lx, y0 + h + ui.dp(12), text=f"{hour:02d}:00",
                               fill=ui.TEXT_FAINT, font=ui.ui_font(7))
-            if now >= midnight:
+            if key == date.today().isoformat():
                 nx = x0 + width * min(1.0, (now - midnight) / 86400.0)
                 c.create_line(nx, y0 - ui.dp(4), nx, y0 + h, fill=ui.TEXT)
 
-        if self.rows is not None:
-            for child in list(self.rows.winfo_children()):
-                child.destroy()
-            for key in tracker.recent(7, now):
-                row = tk.Frame(self.rows, bg=ui.BG)
-                row.pack(fill="x", pady=ui.dp(2))
-                label = t("stats_today") if key == today else key[5:]
-                tk.Label(row, text=label, fg=ui.TEXT_DIM, bg=ui.BG,
-                         font=ui.ui_font(8), width=7, anchor="w").pack(side="left")
-                mini = tk.Canvas(row, width=ui.dp(330), height=ui.dp(16),
-                                 bg=ui.BG, highlightthickness=0, bd=0)
-                mini.pack(side="left", padx=(ui.dp(4), ui.dp(8)))
-                midnight = datetime.combine(date.fromisoformat(key), dtime.min).timestamp()
-                self._draw_bar(mini, 0, ui.dp(3), ui.dp(330), ui.dp(10),
-                               tracker.segments_for(key, now), midnight)
-                day_totals = tracker.totals_for(key, now)
-                if sum(day_totals.values()) < 1:
-                    text = "—"
-                else:
-                    text = " · ".join([
-                    f'{t("stats_sitting")} {fmt_span(day_totals.get("sitting", 0))}',
-                    f'{t("stats_standing")} {fmt_span(day_totals.get("standing", 0))}',
-                        f'{t("stats_away")} {fmt_span(day_totals.get("away", 0))}',
-                    ])
-                tk.Label(row, text=text, fg=ui.TEXT_FAINT, bg=ui.BG,
-                         font=ui.ui_font(7), anchor="e").pack(side="right")
+    def _fill_tree(self) -> None:
+        if self.tree is None:
+            return
+        tracker = self.app.activity
+        now = time.time()
+        days = tracker.all_days(now)
+        if days == self._tree_days:
+            for item in self.tree.get_children():
+                key = str(self.tree.item(item, "values")[0])
+                totals = tracker.totals_for(key, now)
+                self.tree.item(item, values=(
+                    key,
+                    fmt_span(totals.get("sitting", 0)),
+                    fmt_span(totals.get("standing", 0)),
+                    fmt_span(totals.get("away", 0)),
+                ))
+            return
+        self._tree_days = days
+        self.tree.delete(*self.tree.get_children())
+        for key in days:
+            totals = tracker.totals_for(key, now)
+            if sum(totals.values()) < 1:
+                continue
+            self.tree.insert("", "end", values=(
+                key,
+                fmt_span(totals.get("sitting", 0)),
+                fmt_span(totals.get("standing", 0)),
+                fmt_span(totals.get("away", 0)),
+            ))
+        for item in self.tree.get_children():
+            if self.tree.item(item, "values")[0] == self.selected:
+                self.tree.selection_set(item)
+                self.tree.see(item)
+                break
+        if len(self.tree.get_children()) > 7:
+            if not self.scroll.winfo_ismapped():
+                self.scroll.pack(side="right", fill="y")
+        else:
+            self.scroll.pack_forget()
 
-        self._job = self.win.after(3000, self.refresh)
+    def refresh(self) -> None:
+        if self.win is None:
+            return
+        self._update_top()
+        self._fill_tree()
+        self._job = self.win.after(5000, self.refresh)
 
+
+
+class SoundWindow:
+    """选择提醒音、站起音、坐下音；支持自定义 WAV。"""
+
+    KEYS = ("classic", "bright", "drop", "rise", "dingdong", "wood",
+            "bird", "retro", "sit_soft", "stand_up", "none")
+
+    def __init__(self, app, root: tk.Tk):
+        self.app = app
+        self.root = root
+        self.win: tk.Toplevel | None = None
+        self.labels = {key: t(f"sound_{key}") for key in self.KEYS}
+        self.rev = {v: k for k, v in self.labels.items()}
+        self.reminder_var = None
+        self.lbl_custom = None
+
+    def open(self) -> None:
+        if self.win is not None:
+            self.win.lift()
+            self.win.focus_force()
+            return
+        win = tk.Toplevel(self.root)
+        self.win = win
+        win.title(t("sound_window_title"))
+        win.configure(bg=ui.BG)
+        win.resizable(False, False)
+        ui.center_window(win, ui.dp(560), ui.dp(430), anchor="center")
+        win.protocol("WM_DELETE_WINDOW", self.close)
+
+        tk.Label(win, text=t("sound_window_title"), fg=ui.TEXT, bg=ui.BG,
+                 font=ui.ui_font(16, "bold")).pack(anchor="w", padx=ui.dp(22),
+                                                    pady=(ui.dp(16), 0))
+        tk.Label(win, text=t("sound_hint"), fg=ui.TEXT_FAINT, bg=ui.BG,
+                 font=ui.ui_font(8)).pack(anchor="w", padx=ui.dp(22),
+                                          pady=(ui.dp(2), ui.dp(10)))
+
+        cfg = self.app.config
+        self.reminder_var = tk.StringVar(value=self._label(cfg.sound_name))
+        self._sound_row(win, t("sound_reminder"), self.reminder_var,
+                        lambda: self._pick("sound_name", self.reminder_var),
+                        "sound_name", cfg.sound_name)
+        custom = tk.Frame(win, bg=ui.BG)
+        custom.pack(fill="x", padx=ui.dp(22), pady=(0, ui.dp(4)))
+        ui.RoundButton(custom, t("sound_custom"), command=self._pick_file,
+                       width=110, height=28, radius=8, fill=ui.BG_3,
+                       font=ui.ui_font(8)).pack(side="left")
+        self.lbl_custom = tk.Label(custom, text=self._custom_label(),
+                                   fg=ui.TEXT_FAINT, bg=ui.BG,
+                                   font=ui.ui_font(8), anchor="e")
+        self.lbl_custom.pack(side="right", padx=(ui.dp(8), 0))
+
+        sit_var = tk.StringVar(value=self._label(cfg.sit_sound))
+        self._sound_row(win, t("sound_sit"), sit_var,
+                        lambda: self._pick("sit_sound", sit_var),
+                        "sit_sound", cfg.sit_sound)
+        stand_var = tk.StringVar(value=self._label(cfg.stand_sound))
+        self._sound_row(win, t("sound_stand"), stand_var,
+                        lambda: self._pick("stand_sound", stand_var),
+                        "stand_sound", cfg.stand_sound)
+
+        ui.RoundButton(win, t("close"), command=self.close, width=110,
+                       height=36, radius=10, bg=ui.BG_3,
+                       font=ui.ui_font(9)).pack(pady=ui.dp(16))
+
+    def _label(self, key: str) -> str:
+        return self.labels.get(key, self.labels["classic"])
+
+    def _custom_label(self) -> str:
+        path = str(getattr(self.app.config, "sound_file", "") or "")
+        if path:
+            return t("sound_custom_current", name=Path(path).name)
+        return t("sound_default")
+
+    def _sound_row(self, parent, title: str, var, on_pick, field: str,
+                   current: str) -> None:
+        row = tk.Frame(parent, bg=ui.BG)
+        row.pack(fill="x", padx=ui.dp(22), pady=ui.dp(5))
+        tk.Label(row, text=title, fg=ui.TEXT, bg=ui.BG,
+                 font=ui.ui_font(9), width=12, anchor="w").pack(side="left")
+        om = tk.OptionMenu(row, var, *self.labels.values(),
+                           command=lambda _v: on_pick())
+        om.config(bg=ui.BG_3, fg=ui.TEXT, activebackground=ui.BG_3,
+                  activeforeground=ui.TEXT, highlightthickness=0, bd=0,
+                  font=ui.ui_font(9), width=10, anchor="w")
+        om["menu"].config(bg=ui.BG_2, fg=ui.TEXT, activebackground=ui.ACCENT,
+                          activeforeground="#06211f", font=ui.ui_font(9))
+        om.pack(side="left", padx=(ui.dp(6), ui.dp(6)))
+        ui.RoundButton(row, "▶", command=lambda: self._preview(field),
+                       width=34, height=28, radius=8, fill=ui.BG_3,
+                       font=ui.ui_font(8)).pack(side="left")
+
+    def _pick(self, field: str, var) -> None:
+        key = self.rev.get(var.get(), "classic")
+        setattr(self.app.config, field, key)
+        if field == "sound_name":
+            self.app.config.sound_file = ""
+        self.app.apply_settings()
+        if self.lbl_custom is not None:
+            self.lbl_custom.configure(text=self._custom_label())
+        self._preview(field)
+
+    def _pick_file(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self.win, title=t("sound_custom"),
+            filetypes=[("WAV audio", "*.wav"), ("All files", "*.*")])
+        if not path:
+            return
+        self.app.config.sound_file = path
+        self.app.apply_settings()
+        if self.lbl_custom is not None:
+            self.lbl_custom.configure(text=self._custom_label())
+        from . import sound
+        sound.reminder_sound(path, self.app.config.sound_name)
+
+    def _preview(self, field: str) -> None:
+        from . import sound
+        cfg = self.app.config
+        if field == "sound_name":
+            sound.reminder_sound(cfg.sound_file, cfg.sound_name)
+        elif field == "sit_sound":
+            sound.sit_sound(cfg.sit_sound)
+        else:
+            sound.stand_sound(cfg.stand_sound)
+
+    def close(self) -> None:
+        if self.win is not None:
+            try:
+                self.win.destroy()
+            except tk.TclError:
+                pass
+            self.win = None

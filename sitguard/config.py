@@ -69,6 +69,11 @@ class Config:
     # 提醒
     sound: bool = True
     sound_file: str = ""          # 自定义提示音（wav），空=内置提示音
+    sound_name: str = "classic"   # 内置提醒音
+    sit_sound: str = "sit_soft"   # 坐下提示音
+    stand_sound: str = "stand_up" # 站起提示音
+    silent_mode: bool = False     # 静默模式：无声音、无全屏，只右下角提示
+    auto_silent_on_battery: bool = True
     overlay_enabled: bool = True    # 是否显示全屏提醒；关闭则只响铃
     sound_repeat: int = 3            # 提醒音重复次数
     snooze_minutes: int = 5          # 临时推迟
@@ -104,6 +109,11 @@ class Config:
         c.standing_reset_seconds = float(clamp(c.standing_reset_seconds, 30.0, 900.0))
         c.sound_repeat = int(clamp(c.sound_repeat, 0, 10))
         c.sound_file = str(c.sound_file or "")
+        c.sound_name = str(c.sound_name or "classic")
+        c.sit_sound = str(c.sit_sound or "sit_soft")
+        c.stand_sound = str(c.stand_sound or "stand_up")
+        c.silent_mode = bool(c.silent_mode)
+        c.auto_silent_on_battery = bool(c.auto_silent_on_battery)
         c.overlay_enabled = bool(c.overlay_enabled)
         c.snooze_minutes = int(clamp(c.snooze_minutes, 1, 120))
         c.auto_snooze_minutes = int(clamp(c.auto_snooze_minutes, 1, 30))

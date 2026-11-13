@@ -173,6 +173,8 @@ class CameraWorker:
         self.on_posture = on_posture
         self.face_interval = face_interval
         self.pose_interval = pose_interval
+        self._normal_face = face_interval
+        self._normal_pose = pose_interval
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -186,6 +188,11 @@ class CameraWorker:
         self._health = FrameHealth()
         self._health_retry_at = 0.0
         self._apply_calibration()
+
+    def set_power_save(self, enabled: bool) -> None:
+        """静默/省电模式：降低检测频率。"""
+        self.face_interval = 0.5 if enabled else self._normal_face
+        self.pose_interval = 0.9 if enabled else self._normal_pose
 
     def _apply_calibration(self) -> None:
         raw = getattr(self.config, "calibration", None) or {}

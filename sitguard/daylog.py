@@ -57,8 +57,9 @@ class ActivityTracker:
         try:
             self.close_active()
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            cutoff = (datetime.fromtimestamp(self.clock()).date() - timedelta(days=90)).isoformat()
-            days = {k: v for k, v in self.days.items() if k >= cutoff and v}
+            for key in list(self.days):
+                self._merge_day(key)
+            days = {k: v for k, v in self.days.items() if v}
             tmp = self.path.with_suffix(".tmp")
             tmp.write_text(json.dumps({"version": 1, "days": days},
                                       ensure_ascii=False, indent=1),
@@ -79,9 +80,24 @@ class ActivityTracker:
             stop = min(end, midnight)
             if stop > start:
                 self.days.setdefault(key, []).append([start, stop, kind])
+                self._merge_day(key)
             if end <= midnight:
                 break
             start = midnight
+
+    def _merge_day(self, key: str) -> None:
+        """合并相邻同类时段，避免每 30 秒保存产生大量碎片。"""
+        segs = sorted(self.days.get(key, []), key=lambda x: x[0])
+        merged: list[list] = []
+        for start, end, kind in segs:
+            if merged and merged[-1][2] == kind and start <= merged[-1][1] + 1.5:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end, kind])
+        if merged:
+            self.days[key] = merged
+        else:
+            self.days.pop(key, None)
 
     def update(self, kind: str, now: float | None = None) -> None:
         if kind not in KINDS:
@@ -125,6 +141,12 @@ class ActivityTracker:
         if key == date.today().isoformat() and self.kind == "sitting":
             starts.append(self.segment_start)
         return min(starts) if starts else None
+
+    def all_days(self, now: float | None = None) -> list[str]:
+        now = self.clock() if now is None else now
+        keys = {k for k, v in self.days.items() if v}
+        keys.add(_day_key(now))
+        return sorted(keys, reverse=True)
 
     def recent(self, count: int = 7, now: float | None = None) -> list[str]:
         now = self.clock() if now is None else now

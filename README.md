@@ -28,8 +28,13 @@ as soon as you stand.
   the alert and re-reminds you every 5 minutes while you keep sitting.
 - **No main-window pop-up** — after you stand, only a small desktop toast
   confirms it; the main window stays in the tray.
-- **Daily timeline & 7-day history** — see when you first sat, how long you
-  sat/stood/were away, and browse previous days like a watch activity log.
+- **Unlimited activity history** — see when you first sat, how long you
+  sat/stood/were away, and open any past date from a scrollable record list.
+- **Silent / power-save mode** — one click on the main window, or automatic
+  on battery power: no sounds, no full-screen overlay, only bottom-right
+  toasts, with lower camera sampling to save power.
+- **Bounded window size** — the window can be resized but no longer stretches
+  to a mostly empty full screen; restoring keeps it on the current monitor.
 - **Custom alert sound** — choose any `.wav` file, or keep the built-in tone.
 - **Reliable autostart** — registers under `HKCU\...\Run` so it starts at
   login even if the Startup folder shortcut is missing.
@@ -53,6 +58,8 @@ as soon as you stand.
 ![Mini timer](screenshots/mini.png)
 
 ![Activity history](screenshots/history.png)
+
+![Sound settings](screenshots/sounds.png)
 
 ![Break reminder](screenshots/break_overlay.png)
 
@@ -108,8 +115,11 @@ frame” and treats losing sight of you as standing up.
 | Restart camera every | 0 (off) | Periodic soft reset for unstable drivers; try 45 min |
 | Face detection sensitivity | 0.60 | Lower = more sensitive |
 | Full-screen reminder | on | Off = sound only, with a repeat every 5 minutes |
-| Alert sound | built-in | Choose a `.wav` file |
+| Silent on battery | on | Auto silent/power-save when unplugged |
+| Alert sound | built-in | Pick a built-in tone or a `.wav` file |
+| Stand / sit sounds | built-in | Pick a tone for posture changes |
 | Posture calibration | — | Record sitting/standing profiles |
+| Activity history | unlimited | Any past date; stored locally |
 | Language | 中文 | Chinese / English |
 
 Config lives in `data/config.json` (git-ignored), daily stats in
