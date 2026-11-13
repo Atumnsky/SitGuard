@@ -99,7 +99,7 @@ def stop(proc):
 
 def main():
     OUT.mkdir(exist_ok=True)
-    base = {"SITGUARD_OVERRIDE": json.dumps({"demo_mode": True, "sound": False, "language": "zh"}),
+    base = {"SITGUARD_OVERRIDE": json.dumps({"demo_mode": True, "sound": True, "language": "zh"}),
             "SITGUARD_FAKE_SIT": "1613",
             "SITGUARD_ALLOW_MULTI": "1"}
 

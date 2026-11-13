@@ -68,6 +68,8 @@ class Config:
 
     # 提醒
     sound: bool = True
+    sound_file: str = ""          # 自定义提示音（wav），空=内置提示音
+    overlay_enabled: bool = True    # 是否显示全屏提醒；关闭则只响铃
     sound_repeat: int = 3            # 提醒音重复次数
     snooze_minutes: int = 5          # 临时推迟
     auto_snooze_minutes: int = 2     # 休息中一直没离开时，保持提醒的间隔
@@ -101,6 +103,8 @@ class Config:
         c.standing_break_seconds = float(clamp(c.standing_break_seconds, 3.0, 120.0))
         c.standing_reset_seconds = float(clamp(c.standing_reset_seconds, 30.0, 900.0))
         c.sound_repeat = int(clamp(c.sound_repeat, 0, 10))
+        c.sound_file = str(c.sound_file or "")
+        c.overlay_enabled = bool(c.overlay_enabled)
         c.snooze_minutes = int(clamp(c.snooze_minutes, 1, 120))
         c.auto_snooze_minutes = int(clamp(c.auto_snooze_minutes, 1, 30))
         return c

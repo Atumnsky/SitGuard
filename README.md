@@ -18,11 +18,21 @@ as soon as you stand.
   shoulder position, with an optional two-point calibration for your own
   camera angle and body size.
 - **Smart timing** — only sitting time counts; standing pauses the timer.
-- **45-minute reminder** — full-screen break overlay with a sound alert.
+- **45-minute reminder** — full-screen break overlay with a sound alert
+  (or sound-only mode), and it re-alerts every 5 minutes until you stand.
 - **Break finishes when you stand** for 10 seconds, leave the frame for
   12 seconds, or click a button (instant).
 - **3-minute rule** — standing for 3 minutes before the reminder restarts the
   sitting timer from zero.
+- **Sound-only mode** — hide the full-screen reminder; the app still plays
+  the alert and re-reminds you every 5 minutes while you keep sitting.
+- **No main-window pop-up** — after you stand, only a small desktop toast
+  confirms it; the main window stays in the tray.
+- **Daily timeline & 7-day history** — see when you first sat, how long you
+  sat/stood/were away, and browse previous days like a watch activity log.
+- **Custom alert sound** — choose any `.wav` file, or keep the built-in tone.
+- **Reliable autostart** — registers under `HKCU\...\Run` so it starts at
+  login even if the Startup folder shortcut is missing.
 - **Standing at the desk counts** — no need to walk away.
 - **Bilingual UI** — 中文 / English, switchable instantly in Settings.
 - **High-DPI ready** — per-monitor V2 awareness with crisp rendering on
@@ -32,7 +42,6 @@ as soon as you stand.
   the full layout it collapses to a large timer. Double-click it (or click ⤢)
   to restore. The window size is remembered between runs.
 
-![Mini timer](screenshots/mini.png)
 - **Tray, autostart, daily stats**, single instance, fully local processing.
 - **Camera auto-recovery** — if the feed stalls or the device drops after hours
   of running, a watchdog reconnects automatically; detectors are rebuilt hourly.
@@ -40,6 +49,10 @@ as soon as you stand.
   an all-black feed) is detected within seconds and the device is restarted.
 - **Optional scheduled restart** — Settings → Restart camera every N minutes
   (0 = off) for drivers that degrade over long sessions.
+
+![Mini timer](screenshots/mini.png)
+
+![Activity history](screenshots/history.png)
 
 ![Break reminder](screenshots/break_overlay.png)
 
@@ -94,6 +107,8 @@ frame” and treats losing sight of you as standing up.
 | Camera index | 0 | Try 1 for an external camera |
 | Restart camera every | 0 (off) | Periodic soft reset for unstable drivers; try 45 min |
 | Face detection sensitivity | 0.60 | Lower = more sensitive |
+| Full-screen reminder | on | Off = sound only, with a repeat every 5 minutes |
+| Alert sound | built-in | Choose a `.wav` file |
 | Posture calibration | — | Record sitting/standing profiles |
 | Language | 中文 | Chinese / English |
 

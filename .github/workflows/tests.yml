@@ -18,3 +18,5 @@ jobs:
         run: python -m unittest discover -s tests -p "test_engine.py" -v
       - name: Run frame-health tests
         run: python -m unittest discover -s tests -p "test_health.py" -v
+      - name: Run activity-log tests
+        run: python -m unittest discover -s tests -p "test_daylog.py" -v

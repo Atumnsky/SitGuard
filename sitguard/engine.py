@@ -279,17 +279,14 @@ class SessionEngine:
         if gone >= float(getattr(self.config, "break_absent_seconds", 12.0)):
             self._finish_break(now, why="gone", n=int(gone))
             return
-        # 3) 倒计时结束
+        # 3) 倒计时结束：如果还坐着，重新计时并再次提醒
         if elapsed >= self.break_total_seconds:
+            if self.present and self.posture != "standing":
+                self.break_started = now
+                self.follow_reminders += 1
+                self._emit("break_repeat", str(int(self.break_total_seconds // 60)))
+                return
             self._finish_break(now, why="timeout")
-            return
-        # 4) 一直坐着 → 定时再催
-        interval = max(30.0, float(self.config.auto_snooze_minutes) * 60.0)
-        if (self.present and self.posture != "standing"
-                and now - self.last_follow_reminder >= interval):
-            self.last_follow_reminder = now
-            self.follow_reminders += 1
-            self._emit("break_follow", "还在座位上")
 
     def _maybe_second_event(self, now: float) -> None:
         if now - self._last_second_emit >= 1.0:

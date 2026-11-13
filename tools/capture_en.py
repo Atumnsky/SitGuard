@@ -11,7 +11,7 @@ from screenshots import capture, windows_of  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
-BASE = {"demo_mode": True, "sound": False, "language": "en"}
+BASE = {"demo_mode": True, "sound": True, "language": "en"}
 MULTI = {"SITGUARD_ALLOW_MULTI": "1"}
 
 

@@ -295,12 +295,14 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(eng.phase, Phase.WATCHING)
         self.assertEqual(eng.stats.breaks, 1)
 
-    def test_break_countdown_completes(self):
-        eng, clock, _ = make_engine(sit_minutes=1, break_minutes=1)
+    def test_break_repeats_while_sitting(self):
+        eng, clock, events = make_engine(sit_minutes=1, break_minutes=1)
         sit(eng, clock, 65)
-        sit(eng, clock, 65, step=5)  # 一直坐着
-        self.assertEqual(eng.phase, Phase.WATCHING)
-        self.assertEqual(eng.stats.breaks, 1)
+        sit(eng, clock, 65, step=5)  # 一直坐着：5 分钟后应再次提醒
+        self.assertEqual(eng.phase, Phase.BREAK)
+        self.assertEqual(eng.stats.breaks, 0)
+        self.assertTrue(any(k == "break_repeat" for k, _ in events))
+        self.assertGreater(eng.break_remaining, 50)
 
     def test_standing_long_resets_sitting(self):
         eng, clock, events = make_engine(sit_minutes=45, standing_reset_seconds=30)

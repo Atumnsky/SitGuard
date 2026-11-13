@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import tkinter as tk
 from tkinter import font as tkfont
 
@@ -45,6 +46,20 @@ def configure_scale(dpi: float, root: tk.Misc | None = None) -> float:
         except tk.TclError:
             pass
     return SCALE
+
+
+def window_dpi(hwnd: int, fallback: float = 96.0) -> float:
+    """读取窗口所在显示器的真实 DPI（跨屏时 Tk 的 winfo_fpixels 可能不更新）。"""
+    try:
+        user32 = ctypes.windll.user32
+        user32.GetDpiForWindow.argtypes = [ctypes.c_void_p]
+        user32.GetDpiForWindow.restype = ctypes.c_uint
+        dpi = float(user32.GetDpiForWindow(ctypes.c_void_p(int(hwnd))))
+        if dpi >= 72.0:
+            return dpi
+    except Exception:  # noqa: BLE001
+        pass
+    return float(fallback)
 
 
 def dp(value: float) -> int:

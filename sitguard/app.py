@@ -15,10 +15,12 @@ from pathlib import Path
 
 from . import autostart, i18n, sound, ui
 from .camera import CameraSnapshot, CameraWorker, SimulatedCamera
+from .daylog import ActivityTracker
 from .config import Config, data_dir, load_config, save_config, stats_path
 from .engine import EngineEvent, Phase, SessionEngine, Snapshot
 from .posture import Posture, PostureProfile
-from .views import BreakOverlay, CalibrationWindow, MainWindow, SettingsWindow
+from .views import (BreakOverlay, CalibrationWindow, DesktopToast, HistoryWindow,
+                    MainWindow, SettingsWindow)
 
 log = logging.getLogger("sitguard.app")
 
@@ -51,17 +53,21 @@ class App:
         self.root.withdraw()
         # 高 DPI：按真实 DPI 设定缩放，之后所有 dp() 尺寸和字体都跟着放大
         try:
-            dpi = float(self.root.winfo_fpixels("1i"))
+            fallback = float(self.root.winfo_fpixels("1i"))
         except tk.TclError:
-            dpi = 96.0
+            fallback = 96.0
+        dpi = ui.window_dpi(self.root.winfo_id(), fallback)
         self.scale = ui.configure_scale(dpi, self.root)
         log.info("DPI=%.0f scale=%.2f", dpi, self.scale)
         self._apply_window_style()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.main = MainWindow(self, self.root)
+        self.desktop_toast = DesktopToast(self.root)
         self.settings_window = SettingsWindow(self, self.root)
         self.calibration_window = CalibrationWindow(self, self.root)
         self.overlay = BreakOverlay(self, self.root)
+        self.history_window = HistoryWindow(self, self.root)
+        self.activity = ActivityTracker()
 
         self.camera: CameraWorker | SimulatedCamera | None = None
         self._camera_snapshot = CameraSnapshot()
@@ -97,6 +103,12 @@ class App:
         self.root.attributes("-topmost", bool(self.config.always_on_top))
 
     def _boot(self) -> None:
+        if self.config.autostart:
+            try:
+                if not autostart.ensure_enabled():
+                    log.warning("开机自启注册失败")
+            except Exception:  # noqa: BLE001
+                log.exception("开机自启修复失败")
         self._setup_tray()
         if not self.start_minimized:
             self.show_window()
@@ -116,6 +128,9 @@ class App:
         if os.environ.get("SITGUARD_OPEN_SETTINGS"):
             delay = int(os.environ.get("SITGUARD_OPEN_SETTINGS", "3000") or 3000)
             self.root.after(delay, self.open_settings)
+        if os.environ.get("SITGUARD_OPEN_HISTORY"):
+            delay = int(os.environ.get("SITGUARD_OPEN_HISTORY", "3000") or 3000)
+            self.root.after(delay, self.open_history)
         if os.environ.get("SITGUARD_OPEN_CALIBRATION"):
             delay = int(os.environ.get("SITGUARD_OPEN_CALIBRATION", "3000") or 3000)
             self.root.after(delay, self.open_calibration)
@@ -347,6 +362,10 @@ class App:
     def _refresh(self, now: float) -> None:
         pose_ok = self._camera_snapshot.status.pose_ok
         snap = self.engine.snapshot(self._camera_state, self._camera_message, pose_ok)
+        kind = ("paused" if snap.phase is Phase.PAUSED
+                else ("standing" if snap.posture == "standing"
+                      else ("sitting" if snap.present else "away")))
+        self.activity.update(kind)
         self.main.refresh(snap, self._camera_state)
         if now - self._last_preview >= PREVIEW_MS / 1000.0:
             self._last_preview = now
@@ -366,12 +385,14 @@ class App:
 
     def _handle_event(self, ev: EngineEvent) -> None:
         if ev.kind == "break_start":
-            self.show_window()
-            self.overlay.show(self.engine.break_total_seconds, ev.detail)
+            if self.config.overlay_enabled:
+                self.overlay.show(self.engine.break_total_seconds, ev.detail)
             if self.config.sound:
                 for i in range(max(1, self.config.sound_repeat)):
-                    self.root.after(i * 700, sound.reminder_sound)
-            self.main.show_toast(i18n.t("toast_break_start"), ui.WARN, ms=4000)
+                    self.root.after(
+                        i * 700,
+                        lambda p=self.config.sound_file: sound.reminder_sound(p))
+            self.notify(i18n.t("toast_break_start"), ui.WARN, ms=4000)
         elif ev.kind == "break_end":
             self.overlay.close()
             key, _, num = (ev.detail or "timeout").partition(":")
@@ -383,23 +404,24 @@ class App:
                 detail = i18n.t("break_end_manual")
             else:
                 detail = i18n.t("break_end_timeout")
-            self.main.show_toast(i18n.t("toast_break_end", d=detail), ui.GOOD, ms=3500)
+            self.notify(i18n.t("toast_break_end", d=detail), ui.GOOD, ms=3500)
             if self.config.sound:
                 sound.soft_tick()
             self._save_stats()
-        elif ev.kind == "break_follow":
+        elif ev.kind == "break_repeat":
             if self.config.sound:
-                sound.reminder_sound()
+                sound.reminder_sound(self.config.sound_file)
+            self.notify(i18n.t("toast_break_repeat", m=ev.detail), ui.WARN, ms=4000)
         elif ev.kind == "away":
             if self.engine.phase is Phase.WATCHING:
-                self.main.show_toast(i18n.t("toast_away"), ui.TEXT_DIM, ms=1800)
+                self.notify(i18n.t("toast_away"), ui.TEXT_DIM, ms=1800)
         elif ev.kind == "reset_by_break":
-            self.main.show_toast(i18n.t("toast_reset_break"), ui.GOOD, ms=2500)
+            self.notify(i18n.t("toast_reset_break"), ui.GOOD, ms=2500)
         elif ev.kind == "reset_by_standing":
-            self.main.show_toast(i18n.t("toast_reset_standing"), ui.GOOD, ms=2500)
+            self.notify(i18n.t("toast_reset_standing"), ui.GOOD, ms=2500)
         elif ev.kind == "snoozed":
             self.overlay.close()
-            self.main.show_toast(i18n.t("toast_snoozed", m=ev.detail), ui.TEXT_DIM, ms=2500)
+            self.notify(i18n.t("toast_snoozed", m=ev.detail), ui.TEXT_DIM, ms=2500)
 
     # ------------------------------------------------------------------
     # 用户操作
@@ -413,8 +435,12 @@ class App:
             self.notify(i18n.t("toast_paused"), ui.WARN)
 
     def test_break(self) -> None:
+        if self.engine.phase is Phase.BREAK:
+            return
         self.engine.force_break()
-        self.overlay.show(self.engine.break_total_seconds, i18n.t("test_reminder"))
+        if self.config.overlay_enabled and self.overlay.win is None:
+            self.overlay.show(self.engine.break_total_seconds,
+                              i18n.t("test_reminder"))
 
     def confirm_break(self) -> None:
         """用户在弹窗上点“我站起来了 / 关闭本次提醒”。"""
@@ -438,6 +464,9 @@ class App:
                 self.config.window_height = max(150, min(2000, int(round(h / ui.SCALE))))
         except tk.TclError:
             pass
+
+    def open_history(self) -> None:
+        self.history_window.open()
 
     def open_settings(self) -> None:
         self.settings_window.open()
@@ -499,6 +528,10 @@ class App:
             if not ok:
                 self.config.autostart = old.autostart
                 self.notify(i18n.t("toast_autostart_fail"), ui.DANGER)
+        elif self.config.autostart:
+            autostart.ensure_enabled()
+        if not self.config.overlay_enabled and self.overlay.win is not None:
+            self.overlay.close()
         if (self.config.camera_index != old.camera_index
                 or self.config.camera_enabled != old.camera_enabled
                 or self.config.demo_mode != old.demo_mode
@@ -508,9 +541,9 @@ class App:
             self.main.set_camera_button(self.config.camera_enabled)
         save_config(self.config)
 
-    def notify(self, text: str, color: str = ui.ACCENT) -> None:
+    def notify(self, text: str, color: str = ui.ACCENT, ms: int = 2600) -> None:
         try:
-            self.main.show_toast(text, color)
+            self.desktop_toast.show(text, color, ms)
         except tk.TclError:
             pass
 
@@ -547,6 +580,10 @@ class App:
 
     def _save_stats(self) -> None:
         self._last_stats_save = time.monotonic()
+        try:
+            self.activity.save()
+        except Exception:  # noqa: BLE001
+            log.exception("保存活动记录失败")
         st = self.engine.stats
         payload = {
             "date": st.date,
@@ -592,6 +629,12 @@ class App:
 
         def toggle(_icon=None, _item=None):
             self._post(self.toggle_pause)
+
+        def end_break(_icon=None, _item=None):
+            self._post(self.confirm_break)
+
+        def open_stats(_icon=None, _item=None):
+            self._post(self.open_history)
 
         def toggle_cam(_icon=None, _item=None):
             self._post(self.toggle_camera)

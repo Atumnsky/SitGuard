@@ -5,12 +5,16 @@ from __future__ import annotations
 import math
 import time
 import tkinter as tk
+from tkinter import filedialog
+from datetime import date, datetime, time as dtime, timedelta
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageTk
 
 from . import ui
 from .camera import CameraSnapshot
 from .engine import Phase, Snapshot
+from .daylog import fmt_span
 from .i18n import fmt_duration, t
 from .posture import PostureProfile, median_profile
 
@@ -210,9 +214,10 @@ class MainWindow:
         if event.widget is not self.root:
             return
         try:
-            dpi = float(self.root.winfo_fpixels("1i"))
+            fallback = float(self.root.winfo_fpixels("1i"))
         except tk.TclError:
-            dpi = self._dpi
+            fallback = self._dpi
+        dpi = ui.window_dpi(self.root.winfo_id(), fallback)
         if abs(dpi - self._dpi) > 6:
             # 跨屏 DPI 变化：保持“逻辑尺寸”不变，避免窗口相对变小掉进迷你模式
             old_scale = ui.SCALE
@@ -320,6 +325,11 @@ class MainWindow:
                                           width=58, height=28, radius=9, fill=ui.BG_3,
                                           font=ui.ui_font(8), bg=ui.BG)
         self.btn_settings.pack(side="right")
+        self.btn_stats = ui.RoundButton(top, t("stats_btn"),
+                                        command=self.app.open_history,
+                                        width=50, height=28, radius=9, fill=ui.BG_3,
+                                        font=ui.ui_font(8), bg=ui.BG)
+        self.btn_stats.pack(side="right", padx=(0, ui.dp(6)))
 
         mid = tk.Frame(parent, bg=ui.BG)
         mid.pack(fill="x", padx=ui.dp(18), pady=(ui.dp(2), 0))
@@ -584,6 +594,54 @@ class MainWindow:
 # ---------------------------------------------------------------------------
 
 
+class DesktopToast:
+    """屏幕右下角的轻量提示，不抢焦点、不弹出主窗口。"""
+
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.win: tk.Toplevel | None = None
+        self._after = None
+
+    def show(self, text: str, color: str = ui.ACCENT, ms: int = 3200) -> None:
+        self.close()
+        try:
+            win = tk.Toplevel(self.root)
+            win.withdraw()
+            win.overrideredirect(True)
+            win.attributes("-topmost", True)
+            win.configure(bg=color)
+            wrap = max(240, min(520, len(text) * 18))
+            tk.Label(win, text=text, fg="#08110f", bg=color,
+                     font=ui.ui_font(10, "bold"), wraplength=ui.dp(wrap),
+                     justify="left", padx=ui.dp(16), pady=ui.dp(10)).pack()
+            win.update_idletasks()
+            w = max(ui.dp(260), win.winfo_reqwidth())
+            h = win.winfo_reqheight()
+            sw = win.winfo_screenwidth()
+            sh = win.winfo_screenheight()
+            win.geometry(f"{w}x{h}+{sw - w - ui.dp(22)}+{sh - h - ui.dp(74)}")
+            win.deiconify()
+            win.lift()
+            self.win = win
+            self._after = win.after(ms, self.close)
+        except tk.TclError:
+            self.win = None
+
+    def close(self) -> None:
+        if self._after:
+            try:
+                self.win.after_cancel(self._after)  # type: ignore[union-attr]
+            except tk.TclError:
+                pass
+            self._after = None
+        if self.win is not None:
+            try:
+                self.win.destroy()
+            except tk.TclError:
+                pass
+            self.win = None
+
+
 class BreakOverlay:
     def __init__(self, app, root: tk.Tk):
         self.app = app
@@ -789,7 +847,7 @@ class SettingsWindow:
         win.configure(bg=ui.BG)
         win.resizable(False, False)
         win.transient(self.root)
-        ui.center_window(win, ui.dp(440), ui.dp(792), anchor="center")
+        ui.center_window(win, ui.dp(440), ui.dp(872), anchor="center")
         win.protocol("WM_DELETE_WINDOW", self.close)
 
         body = tk.Frame(win, bg=ui.BG)
@@ -826,10 +884,28 @@ class SettingsWindow:
 
         self._check(body, "chk_pose", "posture_enabled")
         self._check(body, "chk_sound", "sound")
+        self._check(body, "chk_overlay", "overlay_enabled")
         self._check(body, "chk_autostart", "autostart")
         self._check(body, "chk_preview", "show_preview")
         self._check(body, "chk_tray", "minimize_to_tray")
         self._check(body, "chk_top", "always_on_top")
+
+        sound_row = tk.Frame(body, bg=ui.BG)
+        sound_row.pack(fill="x", pady=(ui.dp(6), 0))
+        tk.Label(sound_row, text=t("row_sound_file"), fg=ui.TEXT, bg=ui.BG,
+                 font=ui.ui_font(9)).pack(side="left")
+        self._sound_path = str(getattr(cfg, "sound_file", "") or "")
+        self.lbl_sound = tk.Label(sound_row, text=self._sound_label(), fg=ui.TEXT_FAINT,
+                                  bg=ui.BG, font=ui.ui_font(8), anchor="e")
+        self.lbl_sound.pack(side="right", padx=(ui.dp(6), 0))
+        ui.RoundButton(sound_row, t("sound_pick"), command=self.pick_sound,
+                       width=70, height=26, radius=8, fill=ui.BG_3,
+                       font=ui.ui_font(8)).pack(side="right", padx=(ui.dp(6), 0))
+        ui.RoundButton(sound_row, "▶", command=self.test_sound,
+                       width=30, height=26, radius=8, fill=ui.BG_3,
+                       font=ui.ui_font(8)).pack(side="right")
+        tk.Label(body, text=t("hint_sound_file"), fg=ui.TEXT_FAINT, bg=ui.BG,
+                 font=ui.ui_font(8)).pack(anchor="w", pady=(ui.dp(1), 0))
 
         lang_row = tk.Frame(body, bg=ui.BG)
         lang_row.pack(fill="x", pady=(ui.dp(6), 0))
@@ -900,10 +976,30 @@ class SettingsWindow:
                             indicatoron=True, relief="flat", padx=ui.dp(2), pady=ui.dp(1))
         cb.pack(anchor="w")
 
+    def _sound_label(self) -> str:
+        if self._sound_path:
+            return Path(self._sound_path).name
+        return t("sound_default")
+
+    def pick_sound(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self.win, title=t("sound_pick"),
+            filetypes=[("WAV audio", "*.wav"), ("All files", "*.*")])
+        if path:
+            self._sound_path = path
+            self.lbl_sound.configure(text=self._sound_label())
+            self.test_sound()
+
+    def test_sound(self) -> None:
+        from . import sound
+        if self.app.config.sound:
+            sound.reminder_sound(self._sound_path)
+
     def _sync_vars(self) -> None:
         cfg = self.app.config
         self.vars["posture_enabled"].set(cfg.posture_enabled)
         self.vars["sound"].set(cfg.sound)
+        self.vars["overlay_enabled"].set(cfg.overlay_enabled)
         self.vars["autostart"].set(cfg.autostart)
         self.vars["show_preview"].set(cfg.show_preview)
         self.vars["minimize_to_tray"].set(cfg.minimize_to_tray)
@@ -926,6 +1022,8 @@ class SettingsWindow:
             return
         cfg.posture_enabled = bool(self.vars["posture_enabled"].get())
         cfg.sound = bool(self.vars["sound"].get())
+        cfg.overlay_enabled = bool(self.vars["overlay_enabled"].get())
+        cfg.sound_file = self._sound_path
         cfg.autostart = bool(self.vars["autostart"].get())
         cfg.show_preview = bool(self.vars["show_preview"].get())
         cfg.minimize_to_tray = bool(self.vars["minimize_to_tray"].get())
@@ -1112,4 +1210,181 @@ class CalibrationWindow:
         if self.win:
             self.win.destroy()
             self.win = None
+
+
+
+class HistoryWindow:
+    """今日时间轴 + 最近 7 天历史记录。"""
+
+    COLORS = {"sitting": ui.ACCENT, "standing": ui.GOOD,
+              "away": "#4a5260", "paused": "#2f3540"}
+
+    def __init__(self, app, root: tk.Tk):
+        self.app = app
+        self.root = root
+        self.win: tk.Toplevel | None = None
+        self._job = None
+        self.cards: dict[str, tk.StringVar] = {}
+        self.canvas: tk.Canvas | None = None
+        self.rows: tk.Frame | None = None
+        self.lbl_first: tk.Label | None = None
+        self.lbl_today_total: tk.Label | None = None
+
+    def open(self) -> None:
+        if self.win is not None:
+            self.win.lift()
+            self.win.focus_force()
+            self.refresh()
+            return
+        win = tk.Toplevel(self.root)
+        self.win = win
+        win.title(t("stats_title"))
+        win.configure(bg=ui.BG)
+        win.resizable(False, False)
+        ui.center_window(win, ui.dp(760), ui.dp(660), anchor="center")
+        win.protocol("WM_DELETE_WINDOW", self.close)
+
+        tk.Label(win, text=t("stats_title"), fg=ui.TEXT, bg=ui.BG,
+                 font=ui.ui_font(18, "bold")).pack(anchor="w", padx=ui.dp(24),
+                                                    pady=(ui.dp(18), 0))
+        tk.Label(win, text=t("stats_sub"), fg=ui.TEXT_DIM, bg=ui.BG,
+                 font=ui.ui_font(9)).pack(anchor="w", padx=ui.dp(24),
+                                          pady=(ui.dp(3), ui.dp(12)))
+
+        cards = tk.Frame(win, bg=ui.BG)
+        cards.pack(fill="x", padx=ui.dp(24))
+        for key, title in (("sitting", t("stats_sitting")),
+                           ("standing", t("stats_standing")),
+                           ("away", t("stats_away")),
+                           ("breaks", t("stats_breaks"))):
+            box = tk.Frame(cards, bg=ui.BG_2, highlightthickness=1,
+                           highlightbackground=ui.BORDER)
+            box.pack(side="left", expand=True, fill="x", padx=(0, ui.dp(8)))
+            var = tk.StringVar(value="—")
+            self.cards[key] = var
+            tk.Label(box, textvariable=var, fg=ui.TEXT, bg=ui.BG_2,
+                     font=ui.ui_font(15, "bold")).pack(anchor="w",
+                                                       padx=ui.dp(12),
+                                                       pady=(ui.dp(8), 0))
+            tk.Label(box, text=title, fg=ui.TEXT_FAINT, bg=ui.BG_2,
+                     font=ui.ui_font(8)).pack(anchor="w", padx=ui.dp(12),
+                                              pady=(0, ui.dp(8)))
+        self.lbl_first = tk.Label(win, text="", fg=ui.TEXT_FAINT, bg=ui.BG,
+                                  font=ui.ui_font(8))
+        self.lbl_first.pack(anchor="w", padx=ui.dp(24), pady=(ui.dp(6), 0))
+
+        tk.Label(win, text=t("stats_today_timeline"), fg=ui.TEXT_DIM, bg=ui.BG,
+                 font=ui.ui_font(9, "bold")).pack(anchor="w", padx=ui.dp(24),
+                                                  pady=(ui.dp(10), ui.dp(4)))
+        self.canvas = tk.Canvas(win, width=ui.dp(712), height=ui.dp(108),
+                                bg=ui.BG, highlightthickness=0, bd=0)
+        self.canvas.pack(padx=ui.dp(24))
+
+        tk.Label(win, text=t("stats_history"), fg=ui.TEXT_DIM, bg=ui.BG,
+                 font=ui.ui_font(9, "bold")).pack(anchor="w", padx=ui.dp(24),
+                                                  pady=(ui.dp(8), ui.dp(2)))
+        self.rows = tk.Frame(win, bg=ui.BG)
+        self.rows.pack(fill="both", expand=True, padx=ui.dp(24),
+                       pady=(0, ui.dp(10)))
+        self.refresh()
+
+    def close(self) -> None:
+        if self._job:
+            try:
+                self.win.after_cancel(self._job)  # type: ignore[union-attr]
+            except tk.TclError:
+                pass
+            self._job = None
+        if self.win is not None:
+            try:
+                self.win.destroy()
+            except tk.TclError:
+                pass
+            self.win = None
+
+    def _draw_bar(self, canvas: tk.Canvas, x0: float, y0: float, width: float,
+                  height: float, segments: list, day_start: float) -> None:
+        canvas.create_rectangle(x0, y0, x0 + width, y0 + height,
+                                fill=ui.BG_3, outline="")
+        span = 86400.0
+        for start, end, kind in segments:
+            s = max(start, day_start)
+            e = min(end, day_start + span)
+            if e <= s:
+                continue
+            x1 = x0 + (s - day_start) / span * width
+            x2 = x0 + (e - day_start) / span * width
+            if x2 - x1 < 1:
+                x2 = x1 + 1
+            canvas.create_rectangle(x1, y0, x2, y0 + height,
+                                    fill=self.COLORS.get(kind, ui.ACCENT),
+                                    outline="")
+
+    def refresh(self) -> None:
+        if self.win is None:
+            return
+        tracker = self.app.activity
+        now = time.time()
+        today = date.today().isoformat()
+        totals = tracker.totals_for(today, now)
+        self.cards["sitting"].set(fmt_span(totals.get("sitting", 0)))
+        self.cards["standing"].set(fmt_span(totals.get("standing", 0)))
+        self.cards["away"].set(fmt_span(totals.get("away", 0)))
+        self.cards["breaks"].set(t("times", n=self.app.engine.stats.breaks))
+        first = tracker.first_sit(today)
+        if first:
+            self.lbl_first.configure(
+                text=t("stats_first_sit", time=datetime.fromtimestamp(first).strftime("%H:%M")))
+        else:
+            self.lbl_first.configure(text=t("stats_first_sit_none"))
+
+        if self.canvas is not None:
+            c = self.canvas
+            c.delete("all")
+            c.update_idletasks()
+            width = max(100, c.winfo_width() - ui.dp(56))
+            x0 = ui.dp(28)
+            y0 = ui.dp(26)
+            h = ui.dp(26)
+            midnight = datetime.combine(date.today(), dtime.min).timestamp()
+            self._draw_bar(c, x0, y0, width, h,
+                           tracker.segments_for(today, now), midnight)
+            for hour in (0, 6, 12, 18, 24):
+                x = x0 + width * hour / 24.0
+                c.create_line(x, y0 + h, x, y0 + h + ui.dp(4), fill=ui.TEXT_FAINT)
+                lx = min(max(x, x0 + ui.dp(16)), x0 + width - ui.dp(16))
+                c.create_text(lx, y0 + h + ui.dp(12), text=f"{hour:02d}:00",
+                              fill=ui.TEXT_FAINT, font=ui.ui_font(7))
+            if now >= midnight:
+                nx = x0 + width * min(1.0, (now - midnight) / 86400.0)
+                c.create_line(nx, y0 - ui.dp(4), nx, y0 + h, fill=ui.TEXT)
+
+        if self.rows is not None:
+            for child in list(self.rows.winfo_children()):
+                child.destroy()
+            for key in tracker.recent(7, now):
+                row = tk.Frame(self.rows, bg=ui.BG)
+                row.pack(fill="x", pady=ui.dp(2))
+                label = t("stats_today") if key == today else key[5:]
+                tk.Label(row, text=label, fg=ui.TEXT_DIM, bg=ui.BG,
+                         font=ui.ui_font(8), width=7, anchor="w").pack(side="left")
+                mini = tk.Canvas(row, width=ui.dp(330), height=ui.dp(16),
+                                 bg=ui.BG, highlightthickness=0, bd=0)
+                mini.pack(side="left", padx=(ui.dp(4), ui.dp(8)))
+                midnight = datetime.combine(date.fromisoformat(key), dtime.min).timestamp()
+                self._draw_bar(mini, 0, ui.dp(3), ui.dp(330), ui.dp(10),
+                               tracker.segments_for(key, now), midnight)
+                day_totals = tracker.totals_for(key, now)
+                if sum(day_totals.values()) < 1:
+                    text = "—"
+                else:
+                    text = " · ".join([
+                    f'{t("stats_sitting")} {fmt_span(day_totals.get("sitting", 0))}',
+                    f'{t("stats_standing")} {fmt_span(day_totals.get("standing", 0))}',
+                        f'{t("stats_away")} {fmt_span(day_totals.get("away", 0))}',
+                    ])
+                tk.Label(row, text=text, fg=ui.TEXT_FAINT, bg=ui.BG,
+                         font=ui.ui_font(7), anchor="e").pack(side="right")
+
+        self._job = self.win.after(3000, self.refresh)
 

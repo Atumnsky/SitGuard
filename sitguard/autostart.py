@@ -1,7 +1,7 @@
-"""Windows 开机自启（启动文件夹快捷方式）。
+"""Windows 开机自启。
 
-用随附的 MakeShortcut.vbs 创建快捷方式：VBScript 对中文路径更稳，
-且不会弹出 PowerShell 窗口。
+优先写入 HKCU\\...\\Run（比启动文件夹更可靠，不依赖 Explorer 启动项状态），
+同时清理由旧版本创建的启动文件夹快捷方式，避免重复启动。
 """
 
 from __future__ import annotations
@@ -10,12 +10,15 @@ import logging
 import os
 import subprocess
 import sys
+import winreg
 from pathlib import Path
 
 log = logging.getLogger("sitguard.autostart")
 
-SHORTCUT_NAME = "SitGuard.lnk"      # 用 ASCII 文件名，避免 VBScript 处理中文路径的编码问题
+SHORTCUT_NAME = "SitGuard.lnk"
 SCRIPT_NAME = "MakeShortcut.vbs"
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_VALUE = "SitGuard"
 
 
 def startup_dir() -> Path:
@@ -27,11 +30,54 @@ def shortcut_path() -> Path:
     return startup_dir() / SHORTCUT_NAME
 
 
+def _command() -> str:
+    exe = Path(sys.executable)
+    if exe.name.lower() == "python.exe":
+        pythonw = exe.with_name("pythonw.exe")
+        if pythonw.exists():
+            exe = pythonw
+    main = Path(__file__).resolve().parent.parent / "main.py"
+    return f'"{exe}" "{main}" --minimized'
+
+
+def _read_run() -> str | None:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, RUN_VALUE)
+            return str(value)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        log.warning("读取开机自启注册表失败：%s", exc)
+        return None
+
+
+def _write_run(command: str) -> bool:
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN_KEY, 0,
+                                winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, command)
+        return True
+    except OSError as exc:
+        log.warning("写入开机自启注册表失败：%s", exc)
+        return False
+
+
+def _remove_run() -> None:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0,
+                            winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, RUN_VALUE)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        log.warning("删除开机自启注册表失败：%s", exc)
+
+
 def _run_make_shortcut(action: str) -> bool:
     app_dir = Path(__file__).resolve().parent.parent
     script = app_dir / SCRIPT_NAME
     if not script.exists():
-        log.warning("缺少 %s，无法创建快捷方式", script)
         return False
     cscript = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "cscript.exe"
     cmd = [str(cscript), "//nologo", str(script), action, str(shortcut_path())]
@@ -40,34 +86,38 @@ def _run_make_shortcut(action: str) -> bool:
             cmd, capture_output=True, text=True, timeout=30,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        if proc.returncode != 0:
-            log.warning("快捷方式脚本失败：%s %s", proc.returncode, proc.stderr.strip())
         return proc.returncode == 0
-    except Exception as exc:  # noqa: BLE001
-        log.warning("设置开机自启失败：%s", exc)
+    except Exception:  # noqa: BLE001
         return False
 
 
 def is_enabled() -> bool:
-    return shortcut_path().exists()
+    return bool(_read_run())
 
 
 def set_enabled(enabled: bool) -> bool:
-    """创建或删除启动快捷方式，成功返回 True。"""
-    path = shortcut_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if not enabled:
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            if path.exists():
-                _run_make_shortcut("delete")
-            return not path.exists()
-        _run_make_shortcut("create")
-        return path.exists()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("设置开机自启失败：%s", exc)
-        return False
+    """写入/删除 HKCU Run 注册表项；成功返回 True。"""
+    if not enabled:
+        _remove_run()
+        try:
+            shortcut_path().unlink(missing_ok=True)
+        except OSError:
+            pass
+        return not _read_run()
+    command = _command()
+    ok = _write_run(command)
+    if ok:
+        # 清掉旧版启动文件夹快捷方式，避免登录时启动两份
+        try:
+            shortcut_path().unlink(missing_ok=True)
+        except OSError:
+            pass
+    return ok and _read_run() == command
 
+
+def ensure_enabled() -> bool:
+    """配置要求自启但注册表缺失/过期时自动修复。"""
+    current = _read_run()
+    if current == _command():
+        return True
+    return set_enabled(True)

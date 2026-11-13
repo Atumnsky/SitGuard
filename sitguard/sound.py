@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 log = logging.getLogger("sitguard.sound")
@@ -20,7 +21,21 @@ def _beep_sequence() -> None:
         log.debug("提示音播放失败：%s", exc)
 
 
-def reminder_sound() -> None:
+def _play_file(path: str) -> bool:
+    try:
+        import winsound
+
+        winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log.debug("自定义提示音播放失败：%s", exc)
+        return False
+
+
+def reminder_sound(path: str = "") -> None:
+    """播放自定义 wav；为空或失败时使用内置提示音。"""
+    if path and os.path.isfile(path) and _play_file(path):
+        return
     threading.Thread(target=_beep_sequence, daemon=True).start()
 
 
