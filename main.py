@@ -30,13 +30,39 @@ def acquire_single_instance():
         return None, False
 
 
+def wait_for_pid(pid: int, timeout_s: float = 20.0) -> None:
+    """等待旧实例退出，避免重启时单实例互斥把新进程挡掉。"""
+    try:
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.WaitForSingleObject.restype = ctypes.c_uint
+        handle = kernel32.OpenProcess(0x00100000, False, int(pid))  # SYNCHRONIZE
+        if not handle:
+            return
+        try:
+            kernel32.WaitForSingleObject(handle, int(timeout_s * 1000))
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main() -> int:
     # 必须在创建 Tk 之前设置 DPI 感知，否则界面会被系统位图拉伸而发虚
     enable_dpi_awareness()
     setup_logging()
-    args = [a.lower() for a in sys.argv[1:]]
+    raw_args = sys.argv[1:]
+    args = [a.lower() for a in raw_args]
     demo = "--demo" in args
     minimized = "--minimized" in args
+    wait_pid = None
+    if "--restart-wait" in args:
+        try:
+            wait_pid = int(raw_args[args.index("--restart-wait") + 1])
+        except (ValueError, IndexError):
+            wait_pid = None
+    if wait_pid:
+        wait_for_pid(wait_pid)
     # 调试用：SITGUARD_OVERRIDE 可传入 JSON 覆盖配置（如缩短计时方便测试）
     override = os.environ.get("SITGUARD_OVERRIDE", "")
     if override:

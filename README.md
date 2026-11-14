@@ -45,7 +45,11 @@ as soon as you stand.
   to a mostly empty full screen; restoring keeps it on the current monitor.
 - **Custom alert sound** — choose any `.wav` file, or keep the built-in tone.
 - **Reliable autostart** — registers under `HKCU\...\Run` so it starts at
-  login even if the Startup folder shortcut is missing.
+  login even if the Startup folder shortcut is missing, and goes straight
+  to the tray without a taskbar window.
+- **Tray restart** — right-click the tray icon → Restart to relaunch after
+  an update; it waits for the old instance to exit so the single-instance
+  lock never blocks the new one.
 - **Standing at the desk counts** — no need to walk away.
 - **Bilingual UI** — 中文 / English, switchable instantly in Settings.
 - **High-DPI ready** — per-monitor V2 awareness with crisp rendering on

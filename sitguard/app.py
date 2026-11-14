@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -128,8 +129,11 @@ class App:
         self._setup_tray()
         if not self.start_minimized:
             self.show_window()
+        elif self._tray is not None:
+            # 开机自启：直接进托盘，不占任务栏
+            self.root.withdraw()
         else:
-            # 静默启动：任务栏保留图标，确保用户随时能找到它
+            # 托盘不可用时保留任务栏图标，避免“启动后找不到”
             self.root.deiconify()
             self.root.iconify()
         self.root.after(POLL_MS, self._poll)
@@ -176,6 +180,36 @@ class App:
             self.root.withdraw()
             self.main.show_toast(i18n.t("toast_tray"), ui.ACCENT)
             return
+        self.quit()
+
+    def restart_app(self) -> None:
+        """托盘重启：启动一个等待旧进程退出的新实例，然后退出当前实例。"""
+        if self._quitting:
+            return
+        try:
+            exe = Path(sys.executable)
+            if exe.name.lower() == "python.exe":
+                pythonw = exe.with_name("pythonw.exe")
+                if pythonw.exists():
+                    exe = pythonw
+            main = Path(__file__).resolve().parent.parent / "main.py"
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith("SITGUARD_")}
+            flags = 0
+            flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+            flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            subprocess.Popen(
+                [str(exe), str(main), "--minimized",
+                 "--restart-wait", str(os.getpid())],
+                cwd=str(main.parent), env=env, close_fds=True,
+                creationflags=flags,
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("重启失败")
+            self.notify(i18n.t("toast_restart_fail"), ui.DANGER)
+            return
+        log.info("正在重启 SitGuard…")
         self.quit()
 
     def quit(self) -> None:
@@ -784,6 +818,9 @@ class App:
         def open_stats(_icon=None, _item=None):
             self._post(self.open_history)
 
+        def restart(_icon=None, _item=None):
+            self._post(self.restart_app)
+
         def toggle_cam(_icon=None, _item=None):
             self._post(self.toggle_camera)
 
@@ -794,8 +831,11 @@ class App:
             pystray.MenuItem(i18n.t("tray_open"), show, default=True),
             pystray.MenuItem(i18n.t("tray_pause"), toggle),
             pystray.MenuItem(i18n.t("tray_break"), take_break),
+            pystray.MenuItem(i18n.t("tray_end_break"), end_break),
+            pystray.MenuItem(i18n.t("tray_stats"), open_stats),
             pystray.MenuItem(i18n.t("tray_cam"), toggle_cam),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(i18n.t("tray_restart"), restart),
             pystray.MenuItem(i18n.t("tray_exit"), quit_app),
         )
         try:
