@@ -95,6 +95,7 @@ class App:
         self._confirmed_posture: str | None = None
         self._posture_confirmed_at = 0.0
         self._last_posture_sound = 0.0
+        self._away_visible = False
         self._stand_goal_started = time.monotonic()
         self._stand_goal_last = 0.0
         self._last_stand_check = 0.0
@@ -436,6 +437,7 @@ class App:
         self._confirmed_posture = None
         self._posture_since = 0.0
         self._last_posture_sound = 0.0
+        self._away_visible = False
         self._camera_error_since = None
         self._stand_goal_started = now
         self._stand_goal_last = 0.0
@@ -509,7 +511,14 @@ class App:
             self.notify(i18n.t("toast_break_repeat", m=ev.detail), ui.WARN, ms=4000)
         elif ev.kind == "away":
             if self.engine.phase is Phase.WATCHING:
-                self.notify(i18n.t("toast_away"), ui.TEXT_DIM, ms=1800)
+                self.notify(i18n.t("toast_away"), ui.TEXT_DIM, ms=0)
+                self._away_visible = True
+        elif ev.kind == "present":
+            if self._away_visible:
+                self._away_visible = False
+                if self.desktop_toast.sticky:
+                    self.desktop_toast.close()
+                self.notify(i18n.t("toast_welcome"), ui.GOOD, ms=2600)
         elif ev.kind == "reset_by_break":
             self.notify(i18n.t("toast_reset_break"), ui.GOOD, ms=2500)
         elif ev.kind == "reset_by_standing":

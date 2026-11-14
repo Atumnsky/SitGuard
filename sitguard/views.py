@@ -632,6 +632,7 @@ class DesktopToast:
         self.root = root
         self.win: tk.Toplevel | None = None
         self._after = None
+        self.sticky = False
 
     def show(self, text: str, color: str = ui.ACCENT, ms: int = 3200) -> None:
         self.close()
@@ -664,11 +665,14 @@ class DesktopToast:
             win.deiconify()
             win.lift()
             self.win = win
-            self._after = win.after(ms, self.close)
+            self.sticky = ms <= 0
+            if ms > 0:
+                self._after = win.after(ms, self.close)
         except tk.TclError:
             self.win = None
 
     def close(self) -> None:
+        self.sticky = False
         if self._after:
             try:
                 self.win.after_cancel(self._after)  # type: ignore[union-attr]

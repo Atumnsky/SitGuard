@@ -34,7 +34,8 @@ as soon as you stand.
 - **Sound-only mode** — hide the full-screen reminder; the app still plays
   the alert and re-reminds you every 5 minutes while you keep sitting.
 - **No main-window pop-up** — after you stand, only a small desktop toast
-  confirms it; the main window stays in the tray. Sitting down or standing up
+  confirms it; the main window stays in the tray. When you leave, a bottom-right
+  note stays visible until you come back, then a welcome-back toast appears. Sitting down or standing up
   also gets a short bottom-right note with how long you were in the previous
   posture.
 - **Unlimited activity history** — every sitting/standing/away segment keeps
