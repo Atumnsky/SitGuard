@@ -18,6 +18,8 @@ as soon as you stand.
   shoulder position, with an optional two-point calibration for your own
   camera angle and body size.
 - **Smart timing** — only sitting time counts; standing pauses the timer.
+- **At-a-glance today** — the main window shows today's sitting, standing,
+  away, breaks and reminder counts.
 - **45-minute reminder** — full-screen break overlay with a sound alert
   (or sound-only mode), and it re-alerts every 5 minutes until you stand.
 - **Break finishes when you stand** for 10 seconds, leave the frame for

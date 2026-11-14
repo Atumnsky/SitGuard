@@ -390,7 +390,10 @@ class MainWindow:
         inner = tk.Frame(card, bg=ui.BG_2)
         inner.pack(fill="x", padx=ui.dp(14), pady=ui.dp(8))
         self.stat_vars = {}
-        for key, title in (("sit", t("stat_sit")), ("breaks", t("stat_breaks")),
+        for key, title in (("sit", t("stat_sit")),
+                           ("stand", t("stat_stand")),
+                           ("away", t("stat_away")),
+                           ("breaks", t("stat_breaks")),
                            ("rem", t("stat_reminders"))):
             col = tk.Frame(inner, bg=ui.BG_2)
             col.pack(side="left", expand=True, fill="x")
@@ -580,7 +583,10 @@ class MainWindow:
             self.btn_stand.configure_text(t("stand_mode"))
 
         stats = snap.stats
-        self.stat_vars["sit"].set(ui.fmt_sit_total(stats.sitting_seconds))
+        totals = self.app.activity.totals_for(date.today().isoformat(), time.time())
+        self.stat_vars["sit"].set(ui.fmt_sit_total(totals.get("sitting", 0)))
+        self.stat_vars["stand"].set(ui.fmt_sit_total(totals.get("standing", 0)))
+        self.stat_vars["away"].set(ui.fmt_sit_total(totals.get("away", 0)))
         self.stat_vars["breaks"].set(t("times", n=stats.breaks))
         self.stat_vars["rem"].set(t("times", n=stats.reminders))
 
