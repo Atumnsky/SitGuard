@@ -93,6 +93,29 @@ class TestActivityTracker(unittest.TestCase):
         self.assertAlmostEqual(stand, 120, delta=1)
         sit = t.seconds_between("sitting", end - 900, end)
         self.assertAlmostEqual(sit, 600, delta=1)
+
+    def test_mark_away_gap(self):
+        t = self.tracker
+        t.update("sitting", self.now)
+        self.now += 600
+        start = self.now
+        self.now += 720
+        t.mark_away(start, self.now)
+        key = datetime.fromtimestamp(self.now).date().isoformat()
+        totals = t.totals_for(key, self.now)
+        self.assertAlmostEqual(totals["sitting"], 600, delta=1)
+        self.assertAlmostEqual(totals["away"], 720, delta=1)
+
+    def test_repair_long_standing(self):
+        key = datetime.fromtimestamp(self.now).date().isoformat()
+        start = self.now - 5 * 3600
+        self.tracker.days[key] = [[start, self.now, "standing"]]
+        self.tracker._repair_long_standing()
+        kinds = {}
+        for s, e, k in self.tracker.segments_for(key, self.now):
+            kinds[k] = kinds.get(k, 0) + (e - s)
+        self.assertAlmostEqual(kinds.get("standing", 0), 600, delta=2)
+        self.assertGreater(kinds.get("away", 0), 4 * 3600)
     def test_persisted_shape(self):
         self.tracker.update("sitting", self.now)
         self.now += 60

@@ -357,6 +357,23 @@ class SessionEngine:
         self.sitting_seconds = min(self.sitting_seconds, self.sit_limit_seconds)
         self._emit("break_start", _fmt_hms(self.sitting_seconds), reason)
 
+    def reset_after_gap(self, now: float | None = None) -> None:
+        """电脑睡眠/挂起后恢复：不要把睡眠时长算进坐/站计时。"""
+        now = self.clock() if now is None else now
+        if self.phase is Phase.BREAK and self.break_started is not None:
+            self._finish_break(now, why="gone",
+                               n=max(0, int((now - self.break_started) // 60)))
+        self.last_tick = now
+        self.present = False
+        self.tracker.reset()
+        self.away_since = now
+        self._last_seen_ts = None
+        self._last_second_emit = now
+        self.posture = "unknown"
+        self.posture_since = now
+        self.posture_reason = "唤醒"
+        self.snooze_until = 0.0
+
     def _finish_break(self, now: float | None = None, why: str = "timeout",
                       n: int = 0) -> None:
         now = self.clock() if now is None else now

@@ -285,6 +285,17 @@ class TestEngine(unittest.TestCase):
         self.assertAlmostEqual(eng.sitting_seconds, before, delta=2)
         self.assertEqual(eng.posture, "standing")
 
+
+    def test_reset_after_sleep_gap(self):
+        eng, clock, _ = make_engine()
+        sit(eng, clock, 120)
+        before = eng.sitting_seconds
+        clock.advance(5 * 3600)
+        eng.reset_after_gap(clock())
+        eng.tick(clock())
+        self.assertAlmostEqual(eng.sitting_seconds, before, delta=2)
+        self.assertFalse(eng.present)
+        self.assertEqual(eng.phase, Phase.WATCHING)
     def test_reminder_at_limit(self):
         eng, clock, events = make_engine(sit_minutes=45)
         sit(eng, clock, 45 * 60 + 5)

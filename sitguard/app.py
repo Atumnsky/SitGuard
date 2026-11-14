@@ -20,6 +20,8 @@ from .daylog import ActivityTracker
 from .config import Config, data_dir, load_config, save_config, stats_path
 from .engine import EngineEvent, Phase, SessionEngine, Snapshot
 from .posture import Posture, PostureProfile
+
+GAP_SECONDS = 120.0
 from .views import (BreakOverlay, CalibrationWindow, DesktopToast, HistoryWindow,
                     MainWindow, SettingsWindow, SoundWindow)
 
@@ -85,6 +87,7 @@ class App:
         self._last_camera_notice = 0.0
         self._on_battery = power.on_battery()
         self._last_power_check = time.monotonic()
+        self._last_wall = time.time()
         self._silent_active: bool | None = None
         self._booted = False
         self._posture_candidate: str | None = None
@@ -370,6 +373,10 @@ class App:
         try:
             self._drain_tasks()
             now = time.monotonic()
+            wall = time.time()
+            if self._last_wall and wall - self._last_wall > GAP_SECONDS:
+                self._handle_gap(wall, now)
+            self._last_wall = wall
             if self.camera is not None:
                 snap = self.camera.snapshot()
                 self._camera_snapshot = snap
@@ -412,6 +419,34 @@ class App:
                     self.root.after(POLL_MS, self._poll)
                 except tk.TclError:
                     pass
+
+    def _handle_gap(self, wall_now: float, now: float) -> None:
+        """睡眠/挂起后回来：缺口记离开，重置计时，并重启摄像头。"""
+        gap = wall_now - self._last_wall
+        log.warning("检测到睡眠/挂起缺口 %.1f 分钟，按离开处理", gap / 60.0)
+        try:
+            self.activity.mark_away(self._last_wall, wall_now)
+        except Exception:  # noqa: BLE001
+            log.exception("记录睡眠缺口失败")
+        try:
+            self.engine.reset_after_gap(now)
+        except Exception:  # noqa: BLE001
+            log.exception("重置计时失败")
+        self._posture_candidate = None
+        self._confirmed_posture = None
+        self._posture_since = 0.0
+        self._last_posture_sound = 0.0
+        self._camera_error_since = None
+        self._stand_goal_started = now
+        self._stand_goal_last = 0.0
+        if self.camera is not None and not self.config.demo_mode:
+            self.root.after(1500, self._resume_camera)
+
+    def _resume_camera(self) -> None:
+        if self._quitting:
+            return
+        log.info("唤醒后重启摄像头")
+        self._recover_camera(time.monotonic(), "唤醒")
 
     def _track_activity(self) -> None:
         pose_ok = self._camera_snapshot.status.pose_ok

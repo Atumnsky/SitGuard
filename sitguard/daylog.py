@@ -52,6 +52,29 @@ class ActivityTracker:
             pass
         except Exception:  # noqa: BLE001
             log.exception("读取活动记录失败")
+        self._repair_long_standing()
+
+    def _repair_long_standing(self, max_seconds: float = 4 * 3600,
+                              keep_seconds: float = 600) -> None:
+        """旧版本在电脑睡眠时可能把几个小时记成一段“站立”。
+        超过 4 小时的连续站立几乎不可能，拆成短暂站立 + 离开。"""
+        changed = False
+        for key, segs in list(self.days.items()):
+            out = []
+            for start, end, kind in segs:
+                if kind == "standing" and end - start > max_seconds:
+                    split = min(start + keep_seconds, end)
+                    out.append([start, split, "standing"])
+                    if end > split:
+                        out.append([split, end, "away"])
+                    changed = True
+                    log.warning("修正异常长站立段：%s %.1f 小时",
+                                key, (end - start) / 3600.0)
+                else:
+                    out.append([start, end, kind])
+            self.days[key] = out
+        if changed:
+            self.save()
 
     def save(self) -> None:
         try:
@@ -114,6 +137,19 @@ class ActivityTracker:
         self.segment_start = now
         if now - self._last_save >= 30:
             self.save()
+
+    def mark_away(self, start: float, end: float) -> None:
+        """把一段没有采集的缺口（睡眠/挂起）记为离开，避免最后一个状态
+        跨睡眠延续成几个小时的“站立”。"""
+        if end <= start:
+            return
+        start = max(start, self.segment_start or start)
+        if self.segment_start is not None and start > self.segment_start:
+            self._append(self.segment_start, start, self.kind)
+        self._append(start, end, "away")
+        self.kind = "away"
+        self.segment_start = end
+        self.save()
 
     def close_active(self, now: float | None = None) -> None:
         now = self.clock() if now is None else now
