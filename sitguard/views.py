@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 import tkinter as tk
@@ -17,6 +18,8 @@ from .engine import Phase, Snapshot
 from .daylog import fmt_span
 from .i18n import fmt_duration, t
 from .posture import PostureProfile, median_profile
+
+log = logging.getLogger("sitguard.views")
 
 
 def arc_points(box: tuple[float, float, float, float], start_deg: float,
@@ -1561,7 +1564,7 @@ class HistoryWindow:
         tracker = self.app.activity
         now = time.time()
         days = tracker.all_days(now)
-        if days == self._tree_days:
+        if days == self._tree_days and self.tree.get_children():
             for item in self.tree.get_children():
                 key = str(self.tree.item(item, "values")[0])
                 totals = tracker.totals_for(key, now)
@@ -1589,6 +1592,8 @@ class HistoryWindow:
                 self.tree.selection_set(item)
                 self.tree.see(item)
                 break
+        if len(days) and not self.tree.get_children():
+            log.warning("历史列表为空，但活动数据有 %d 天", len(days))
         if len(self.tree.get_children()) > 7:
             if not self.tree_scroll.winfo_ismapped():
                 self.tree_scroll.pack(side="right", fill="y")

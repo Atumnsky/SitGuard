@@ -250,8 +250,11 @@ class PostureAnalyzer:
 
         candidate, reason = self._decide(now, pose, profile, face_present, person_present)
 
-        # 站起来后很快离开画面：给 20 秒“站立”宽限
-        if candidate == "unknown" and not face_present:
+        # 站起来后很快离开画面：仅在“未校准”或“站姿校准为离开画面”时给宽限。
+        # 站姿档案可见时，离开画面应判为 unknown/away，而不是站立。
+        if (candidate == "unknown" and not face_present
+                and (self.standing_profile is None
+                     or not self.standing_profile.visible)):
             if self._lost_after_rise_at and now - self._lost_after_rise_at <= 1.5:
                 self._grace_until = max(self._grace_until, now + 20)
             if now <= self._grace_until:
@@ -261,6 +264,19 @@ class PostureAnalyzer:
             return self.posture
         self._candidate_apply(now, candidate, reason)
         return self.posture
+
+    def _sitting_evidence(self, profile: PostureProfile) -> bool:
+        """头部或肩部仍在坐姿高度时，不要因为低头/腿伸直误判站立。"""
+        sit = self.sitting_profile
+        if sit is None:
+            return False
+        if (sit.face_y is not None and profile.face_y is not None
+                and profile.face_y > sit.face_y - 0.08):
+            return True
+        if (sit.shoulder_y is not None and profile.shoulder_y is not None
+                and profile.shoulder_y > sit.shoulder_y - 0.06):
+            return True
+        return False
 
     def _decide(self, now: float, pose: list[Landmark] | None,
                 profile: PostureProfile, face_present: bool,
@@ -274,6 +290,8 @@ class PostureAnalyzer:
                 if d_sit is not None and d_stand is not None:
                     margin = 0.035
                     if d_stand + margin < d_sit:
+                        if self._sitting_evidence(profile):
+                            return "sitting", "头部/肩部仍在坐姿高度"
                         return "standing", f"接近站姿档案（{d_stand:.2f}）"
                     if d_sit + margin < d_stand:
                         return "sitting", f"接近坐姿档案（{d_sit:.2f}）"
@@ -281,6 +299,17 @@ class PostureAnalyzer:
         # 1) 关键点直接判定
         vote = classify_pose(pose)
         if vote.posture != "unknown":
+            if vote.posture == "standing":
+                if profile.visible and self._sitting_evidence(profile):
+                    return "sitting", "关键点像站立，但头/肩仍在坐姿高度"
+                if not profile.visible:
+                    sit = self.sitting_profile
+                    if (sit is not None and sit.shoulder_y is not None
+                            and profile.shoulder_y is not None
+                            and profile.shoulder_y > sit.shoulder_y - 0.10):
+                        return "sitting", "看不到脸且肩部仍低"
+                    if profile.shoulder_y is None and sit is not None:
+                        return "unknown", "无脸也无肩，不能判站立"
             return vote.posture, vote.reason
         if vote.torso_ratio:
             self._torso_samples.append(vote.torso_ratio)

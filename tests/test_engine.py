@@ -210,6 +210,36 @@ class TestPosture(unittest.TestCase):
                      face_present=False, person_present=True)
         self.assertEqual(a.posture, "standing", a.reason)
 
+
+    def test_calibrated_leaving_is_not_standing(self):
+        a = PostureAnalyzer(standing_hold=1.0, sitting_hold=1.0)
+        a.set_calibration(
+            PostureProfile(face_y=0.75, face_h=0.3, shoulder_y=0.9, visible=True),
+            PostureProfile(face_y=0.35, face_h=0.25, shoulder_y=0.6, visible=True))
+        t = 0.0
+        for _ in range(5):
+            t += 1.0
+            a.update(t, pose=None,
+                     profile=PostureProfile(face_y=0.74, face_h=0.3, shoulder_y=0.89, visible=True),
+                     face_present=True, person_present=True)
+        for _ in range(8):
+            t += 1.0
+            a.update(t, pose=None, profile=PostureProfile(visible=False),
+                     face_present=False, person_present=True)
+        self.assertNotEqual(a.posture, "standing", a.reason)
+
+    def test_looking_down_with_straight_legs_is_sitting(self):
+        a = PostureAnalyzer(standing_hold=1.0, sitting_hold=1.0)
+        a.set_calibration(
+            PostureProfile(face_y=0.75, face_h=0.3, shoulder_y=0.9, visible=True),
+            PostureProfile(face_y=0.35, face_h=0.25, shoulder_y=0.6, visible=True))
+        t = 0.0
+        for _ in range(5):
+            t += 1.0
+            a.update(t, pose=standing_pose(),
+                     profile=PostureProfile(face_y=0.74, face_h=0.22, shoulder_y=0.9, visible=True),
+                     face_present=True, person_present=True)
+        self.assertEqual(a.posture, "sitting", a.reason)
     def test_far_sitting_not_standing(self):
         a = PostureAnalyzer(standing_hold=1.0, sitting_hold=1.0, min_samples=3)
         t = 0.0

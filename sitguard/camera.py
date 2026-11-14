@@ -403,6 +403,13 @@ class CameraWorker:
                             face_present=seen, person_present=person)
                     except Exception:  # noqa: BLE001
                         log.exception("姿态分析异常")
+                    if posture != self._last_posture:
+                        log.info(
+                            "姿态切换：%s → %s（%s）face_y=%s face_h=%s shoulder_y=%s",
+                            self._last_posture, posture, self.posture.reason,
+                            None if profile.face_y is None else round(profile.face_y, 3),
+                            None if profile.face_h is None else round(profile.face_h, 3),
+                            None if profile.shoulder_y is None else round(profile.shoulder_y, 3))
                     if self.on_posture and posture != self._last_posture:
                         self._last_posture = posture
                         try:

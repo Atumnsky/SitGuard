@@ -16,7 +16,9 @@ as soon as you stand.
 
 - **Sit/stand detection** using MediaPipe Pose (33 landmarks) plus face and
   shoulder position, with an optional two-point calibration for your own
-  camera angle and body size.
+  camera angle and body size. Leaving the frame is classified as away, and
+  looking down or leaning forward no longer flips you to standing when your
+  head and shoulders are still at sitting height.
 - **Smart timing** — only sitting time counts; standing pauses the timer.
 - **At-a-glance today** — the main window shows today's sitting, standing,
   away, breaks and reminder counts.
