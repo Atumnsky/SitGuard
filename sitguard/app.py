@@ -186,10 +186,10 @@ class App:
             return
         self.quit()
 
-    def restart_app(self) -> None:
+    def restart_app(self) -> bool:
         """托盘重启：启动一个等待旧进程退出的新实例，然后退出当前实例。"""
         if self._quitting:
-            return
+            return False
         try:
             exe = Path(sys.executable)
             if exe.name.lower() == "python.exe":
@@ -212,9 +212,10 @@ class App:
         except Exception:  # noqa: BLE001
             log.exception("重启失败")
             self.notify(i18n.t("toast_restart_fail"), ui.DANGER)
-            return
+            return False
         log.info("正在重启 SitGuard…")
         self.quit()
+        return True
 
     def quit(self) -> None:
         if self._quitting:
@@ -376,7 +377,10 @@ class App:
             now = time.monotonic()
             wall = time.time()
             if self._last_wall and wall - self._last_wall > GAP_SECONDS:
-                self._handle_gap(wall, now)
+                restarted = self._handle_gap(wall, now)
+                self._last_wall = wall
+                if restarted:
+                    return
             self._last_wall = wall
             if self.camera is not None:
                 snap = self.camera.snapshot()
@@ -421,8 +425,12 @@ class App:
                 except tk.TclError:
                     pass
 
-    def _handle_gap(self, wall_now: float, now: float) -> None:
-        """睡眠/挂起后回来：缺口记离开，重置计时，并重启摄像头。"""
+    def _handle_gap(self, wall_now: float, now: float) -> bool:
+        """睡眠/挂起后回来：缺口记离开，保存，然后重启整个进程。
+
+        休眠恢复后继续复用 MediaPipe/OpenCV 可能触发堆损坏（0xc0000374），
+        因此不在旧进程里重建摄像头，直接交给新的进程。
+        """
         gap = wall_now - self._last_wall
         log.warning("检测到睡眠/挂起缺口 %.1f 分钟，按离开处理", gap / 60.0)
         try:
@@ -431,6 +439,7 @@ class App:
             log.exception("记录睡眠缺口失败")
         try:
             self.engine.reset_after_gap(now)
+            self._save_stats()
         except Exception:  # noqa: BLE001
             log.exception("重置计时失败")
         self._posture_candidate = None
@@ -441,8 +450,15 @@ class App:
         self._camera_error_since = None
         self._stand_goal_started = now
         self._stand_goal_last = 0.0
-        if self.camera is not None and not self.config.demo_mode:
+        if self.config.demo_mode:
+            return False
+        log.info("唤醒后重启进程，避免复用休眠前的摄像头/模型状态")
+        if self.restart_app():
+            return True
+        # 重启失败：退回进程内恢复摄像头
+        if self.camera is not None:
             self.root.after(1500, self._resume_camera)
+        return False
 
     def _resume_camera(self) -> None:
         if self._quitting:
