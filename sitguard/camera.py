@@ -17,8 +17,8 @@ import cv2
 import numpy as np
 
 from .health import FrameHealth
-from .posture import (Landmark, Posture, PostureAnalyzer, PostureProfile,
-                      extract_profile)
+from .posture import (L_SHOULDER, R_SHOULDER, Landmark, Posture, PostureAnalyzer,
+                      PostureProfile, extract_profile)
 
 log = logging.getLogger("sitguard.camera")
 
@@ -161,6 +161,19 @@ class PoseDetector:
         lms = res.pose_landmarks[0]
         return [Landmark(float(p.x), float(p.y), float(getattr(p, "visibility", 0.0) or 0.0))
                 for p in lms]
+
+
+def _pose_body_present(lms) -> bool:
+    """肩部可见且宽度足够时，即使脸被挡住（低头/侧脸）也认为人在。"""
+    if not lms or len(lms) <= R_SHOULDER:
+        return False
+    left, right = lms[L_SHOULDER], lms[R_SHOULDER]
+    if left.visibility < 0.4 or right.visibility < 0.4:
+        return False
+    if not (0.0 <= left.y <= 1.0 and 0.0 <= right.y <= 1.0):
+        return False
+    width = abs(right.x - left.x)
+    return 0.10 <= width <= 1.0
 
 
 class CameraWorker:
@@ -381,12 +394,6 @@ class CameraWorker:
                         best = max(faces, key=lambda f: f[2] * f[3])
                         h, w = frame.shape[:2]
                         face_center = ((best[0] + best[2] / 2) / w, (best[1] + best[3] / 2) / h)
-                    if self.on_presence:
-                        try:
-                            self.on_presence(seen, now)
-                        except Exception:  # noqa: BLE001
-                            log.exception("presence 回调异常")
-
                 if now - last_pose >= self.pose_interval:
                     last_pose = now
                     if self._pose:
@@ -394,7 +401,12 @@ class CameraWorker:
                             pose_lms = self._pose.detect(frame, now)
                         except Exception:  # noqa: BLE001
                             pose_lms = None
-                    person = seen or pose_lms is not None
+                    person = seen or _pose_body_present(pose_lms)
+                    if self.on_presence:
+                        try:
+                            self.on_presence(person, now)
+                        except Exception:  # noqa: BLE001
+                            log.exception("presence 回调异常")
                     h, w = frame.shape[:2]
                     profile = extract_profile(faces, pose_lms, w, h)
                     try:
