@@ -121,6 +121,11 @@ class App:
         self.root.attributes("-topmost", bool(self.config.always_on_top))
 
     def _boot(self) -> None:
+        # 启动时清掉上一次遗留的重启请求，避免启动后立刻再次重启
+        try:
+            (data_dir() / "restart.request").unlink(missing_ok=True)
+        except OSError:
+            pass
         self._booted = True
         self._silent_active = None
         self._sync_silent()
@@ -216,6 +221,18 @@ class App:
         log.info("正在重启 SitGuard…")
         self.quit()
         return True
+
+    def _check_restart_request(self) -> bool:
+        """外部（更新脚本）写入 data/restart.request 时，走托盘重启流程。"""
+        path = data_dir() / "restart.request"
+        try:
+            if not path.exists():
+                return False
+            path.unlink(missing_ok=True)
+        except OSError:
+            return False
+        log.info("收到外部重启请求")
+        return self.restart_app()
 
     def quit(self) -> None:
         if self._quitting:
@@ -374,6 +391,8 @@ class App:
             return
         try:
             self._drain_tasks()
+            if self._check_restart_request():
+                return
             now = time.monotonic()
             wall = time.time()
             if self._last_wall and wall - self._last_wall > GAP_SECONDS:
