@@ -470,8 +470,8 @@ class App:
         pose_ok = self._camera_snapshot.status.pose_ok
         snap = self.engine.snapshot(self._camera_state, self._camera_message, pose_ok)
         kind = ("paused" if snap.phase is Phase.PAUSED
-                else ("standing" if snap.posture == "standing"
-                      else ("sitting" if snap.present else "away")))
+                else ("away" if not snap.present
+                      else ("standing" if snap.posture == "standing" else "sitting")))
         self.activity.update(kind)
 
     def _refresh(self, now: float) -> None:

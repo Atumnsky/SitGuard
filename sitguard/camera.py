@@ -163,19 +163,6 @@ class PoseDetector:
                 for p in lms]
 
 
-def _pose_body_present(lms) -> bool:
-    """肩部可见且宽度足够时，即使脸被挡住（低头/侧脸）也认为人在。"""
-    if not lms or len(lms) <= R_SHOULDER:
-        return False
-    left, right = lms[L_SHOULDER], lms[R_SHOULDER]
-    if left.visibility < 0.4 or right.visibility < 0.4:
-        return False
-    if not (0.0 <= left.y <= 1.0 and 0.0 <= right.y <= 1.0):
-        return False
-    width = abs(right.x - left.x)
-    return 0.10 <= width <= 1.0
-
-
 class CameraWorker:
     """后台线程：采集画面、人脸 + 姿态检测、维护最新快照。"""
 
@@ -201,6 +188,28 @@ class CameraWorker:
         self._health = FrameHealth()
         self._health_retry_at = 0.0
         self._apply_calibration()
+
+    def _pose_body_present(self, lms) -> bool:
+        """脸被挡住时，只有“坐姿高度”的肩部才算人在。
+
+        这样低头仍算在座，但离开后背景里高处的衣物/人影不会被当成站立。
+        """
+        if not lms or len(lms) <= R_SHOULDER:
+            return False
+        left, right = lms[L_SHOULDER], lms[R_SHOULDER]
+        if left.visibility < 0.4 or right.visibility < 0.4:
+            return False
+        if not (0.0 <= left.y <= 1.0 and 0.0 <= right.y <= 1.0):
+            return False
+        width = abs(right.x - left.x)
+        if not (0.10 <= width <= 1.0):
+            return False
+        sit = self.posture.sitting_profile
+        if sit is not None and sit.shoulder_y is not None:
+            # 肩部明显高于坐姿高度 → 不是低头坐着，可能只是背景/衣物
+            if min(left.y, right.y) < sit.shoulder_y - 0.22:
+                return False
+        return True
 
     def set_power_save(self, enabled: bool) -> None:
         """静默/省电模式：降低检测频率。"""
@@ -401,7 +410,7 @@ class CameraWorker:
                             pose_lms = self._pose.detect(frame, now)
                         except Exception:  # noqa: BLE001
                             pose_lms = None
-                    person = seen or _pose_body_present(pose_lms)
+                    person = seen or self._pose_body_present(pose_lms)
                     if self.on_presence:
                         try:
                             self.on_presence(person, now)

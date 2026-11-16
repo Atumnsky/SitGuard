@@ -492,7 +492,7 @@ class MainWindow:
         sit = snap.sitting_seconds
         limit = snap.sit_limit
         ratio = sit / limit if limit else 0
-        standing = snap.posture == "standing"
+        standing = snap.posture == "standing" and snap.present
 
         if phase is Phase.PAUSED:
             heading = t("paused_heading")
@@ -549,20 +549,20 @@ class MainWindow:
         self.lbl_sub.configure(text=sub)
 
         if camera_state == "ok":
-            if standing:
-                self.lbl_presence.configure(
-                    text=t("present_standing", n=int(snap.standing_seconds)), fg=ui.GOOD)
-            elif snap.posture == "sitting":
-                self.lbl_presence.configure(text=t("present_sitting"), fg=ui.GOOD)
-            elif snap.present:
-                self.lbl_presence.configure(text=t("present_unknown"), fg=ui.GOOD)
-            else:
+            if not snap.present:
                 away = snap.away_seconds
                 if away >= 60:
                     self.lbl_presence.configure(
                         text=t("away_minutes", m=int(away // 60)), fg=ui.WARN)
                 else:
                     self.lbl_presence.configure(text=t("no_person"), fg=ui.WARN)
+            elif standing:
+                self.lbl_presence.configure(
+                    text=t("present_standing", n=int(snap.standing_seconds)), fg=ui.GOOD)
+            elif snap.posture == "sitting":
+                self.lbl_presence.configure(text=t("present_sitting"), fg=ui.GOOD)
+            else:
+                self.lbl_presence.configure(text=t("present_unknown"), fg=ui.GOOD)
             detail = t("pose_ok") if snap.pose_ok else t("pose_face_only")
             if snap.pose_ok and not getattr(self.app.config, "calibration", None):
                 detail = t("pose_cal_hint")
