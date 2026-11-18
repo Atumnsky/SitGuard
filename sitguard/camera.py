@@ -413,6 +413,8 @@ class CameraWorker:
                             pose_lms = self._pose.detect(frame, now)
                         except Exception:  # noqa: BLE001
                             pose_lms = None
+                    h, w = frame.shape[:2]
+                    profile = extract_profile(faces, pose_lms, w, h)
                     sit_face_y = (self.posture.sitting_profile.face_y
                                   if self.posture.sitting_profile is not None else None)
                     head = self.head.update(seen, profile, pose_lms, now, sit_face_y)
@@ -426,8 +428,6 @@ class CameraWorker:
                             self.on_presence(person, now)
                         except Exception:  # noqa: BLE001
                             log.exception("presence 回调异常")
-                    h, w = frame.shape[:2]
-                    profile = extract_profile(faces, pose_lms, w, h)
                     try:
                         posture = self.posture.update(
                             now, pose=pose_lms, profile=profile,
