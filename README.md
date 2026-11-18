@@ -71,7 +71,9 @@ as soon as you stand.
 - **Camera auto-recovery** — if the feed stalls or the device drops after hours
   of running, a watchdog reconnects automatically; detectors are rebuilt hourly.
 - **Sleep/resume aware** — a long wall-clock gap (computer sleep or suspend)
-  is recorded as away, not as the last posture for hours.
+  is recorded as **Off**, not as the last posture for hours.
+- **Shutdown time** — periods when SitGuard was not running (PC off, restart,
+  manual quit) are filled in as Off on the next start, never as sitting.
 - **Snow / black frame detection** — corrupted camera output (TV-static noise or
   an all-black feed) is detected within seconds and the device is restarted.
 - **Optional scheduled restart** — Settings → Restart camera every N minutes
