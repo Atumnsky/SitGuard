@@ -116,6 +116,17 @@ class TestActivityTracker(unittest.TestCase):
             kinds[k] = kinds.get(k, 0) + (e - s)
         self.assertAlmostEqual(kinds.get("standing", 0), 600, delta=2)
         self.assertGreater(kinds.get("away", 0), 4 * 3600)
+
+    def test_repair_long_sitting(self):
+        key = datetime.fromtimestamp(self.now).date().isoformat()
+        start = self.now - 10 * 3600
+        self.tracker.days[key] = [[start, self.now, "sitting"]]
+        self.tracker._repair_long_sitting()
+        kinds = {}
+        for s, e, k in self.tracker.segments_for(key, self.now):
+            kinds[k] = kinds.get(k, 0) + (e - s)
+        self.assertAlmostEqual(kinds.get("sitting", 0), 3600, delta=2)
+        self.assertGreater(kinds.get("off", 0), 8 * 3600)
     def test_persisted_shape(self):
         self.tracker.update("sitting", self.now)
         self.now += 60

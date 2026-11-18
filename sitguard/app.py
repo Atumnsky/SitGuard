@@ -456,7 +456,7 @@ class App:
         gap = wall_now - self._last_wall
         log.warning("检测到睡眠/挂起缺口 %.1f 分钟，按离开处理", gap / 60.0)
         try:
-            self.activity.mark_away(self._last_wall, wall_now)
+            self.activity.mark_gap(self._last_wall, wall_now, "off")
         except Exception:  # noqa: BLE001
             log.exception("记录睡眠缺口失败")
         try:

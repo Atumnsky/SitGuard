@@ -1248,7 +1248,7 @@ class HistoryWindow:
     """活动统计：任意日期时间轴 + 全部历史记录（无限保留）。"""
 
     COLORS = {"sitting": "#5ee0d0", "standing": "#f0b45a",
-              "away": "#8a93a3", "paused": "#2f3540"}
+              "away": "#8a93a3", "off": "#6f7d8c", "paused": "#2f3540"}
 
     def __init__(self, app, root: tk.Tk):
         self.app = app
@@ -1306,6 +1306,7 @@ class HistoryWindow:
         for key, title in (("sitting", t("stats_sitting")),
                            ("standing", t("stats_standing")),
                            ("away", t("stats_away")),
+                           ("off", t("stats_off")),
                            ("breaks", t("stats_breaks"))):
             box = tk.Frame(cards, bg=ui.BG_2, highlightthickness=1,
                            highlightbackground=ui.BORDER)
@@ -1342,7 +1343,8 @@ class HistoryWindow:
         legend.pack(anchor="w", padx=ui.dp(24), pady=(ui.dp(2), ui.dp(2)))
         for kind, label in (("sitting", t("stats_sitting")),
                             ("standing", t("stats_standing")),
-                            ("away", t("stats_away"))):
+                            ("away", t("stats_away")),
+                            ("off", t("stats_off"))):
             dot = tk.Canvas(legend, width=ui.dp(10), height=ui.dp(10),
                             bg=self.COLORS[kind], highlightthickness=0, bd=0)
             dot.pack(side="left", padx=(0 if kind == "sitting" else ui.dp(12), ui.dp(4)))
@@ -1386,16 +1388,17 @@ class HistoryWindow:
         tk.Label(right, text=t("stats_details"), fg=ui.TEXT_FAINT, bg=ui.BG,
                  font=ui.ui_font(8)).pack(anchor="w")
 
-        tree = ttk.Treeview(left, columns=("date", "sit", "stand", "away"),
+        tree = ttk.Treeview(left, columns=("date", "sit", "stand", "away", "off"),
                             show="headings", height=7, style="Stats.Treeview",
                             selectmode="browse")
         tree.heading("date", text=t("stats_date"))
         tree.heading("sit", text=t("stats_sitting"))
         tree.heading("stand", text=t("stats_standing"))
         tree.heading("away", text=t("stats_away"))
-        tree.column("date", width=ui.dp(108), anchor="w")
-        for c in ("sit", "stand", "away"):
-            tree.column(c, width=ui.dp(58), anchor="e")
+        tree.heading("off", text=t("stats_off"))
+        tree.column("date", width=ui.dp(98), anchor="w")
+        for c in ("sit", "stand", "away", "off"):
+            tree.column(c, width=ui.dp(52), anchor="e")
         tree_scroll = ttk.Scrollbar(left, orient="vertical", command=tree.yview,
                                    style="Stats.Vertical.TScrollbar")
         tree.configure(yscrollcommand=tree_scroll.set)
@@ -1504,6 +1507,7 @@ class HistoryWindow:
         self.cards["sitting"].set(fmt_span(totals.get("sitting", 0)))
         self.cards["standing"].set(fmt_span(totals.get("standing", 0)))
         self.cards["away"].set(fmt_span(totals.get("away", 0)))
+        self.cards["off"].set(fmt_span(totals.get("off", 0)))
         self.cards["breaks"].set(t("times", n=self.app.engine.stats.breaks)
                                   if key == date.today().isoformat() else "—")
         first = tracker.first_sit(key)
@@ -1584,6 +1588,7 @@ class HistoryWindow:
                     fmt_span(totals.get("sitting", 0)),
                     fmt_span(totals.get("standing", 0)),
                     fmt_span(totals.get("away", 0)),
+                    fmt_span(totals.get("off", 0)),
                 ))
             return
         self._tree_days = days
@@ -1597,6 +1602,7 @@ class HistoryWindow:
                 fmt_span(totals.get("sitting", 0)),
                 fmt_span(totals.get("standing", 0)),
                 fmt_span(totals.get("away", 0)),
+                fmt_span(totals.get("off", 0)),
             ))
         for item in self.tree.get_children():
             if self.tree.item(item, "values")[0] == self.selected:

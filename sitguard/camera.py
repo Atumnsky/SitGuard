@@ -400,11 +400,26 @@ class CameraWorker:
                     except Exception:  # noqa: BLE001
                         log.exception("人脸检测异常")
                         faces = []
+                    h, w = frame.shape[:2]
+                    min_w = w * float(getattr(self.config, "min_face_ratio", 0.06))
+                    min_h = h * float(getattr(self.config, "min_face_ratio", 0.06)) * 0.8
+                    valid = []
+                    for f in faces:
+                        x, y, fw, fh, _score = f
+                        cx = x + fw / 2.0
+                        cy = y + fh / 2.0
+                        if fw < min_w or fh < min_h:
+                            continue
+                        if not (0.12 * w <= cx <= 0.88 * w):
+                            continue
+                        if not (0.02 * h <= cy <= 0.98 * h):
+                            continue
+                        valid.append(f)
+                    faces = valid
                     seen = len(faces) > 0
                     face_center = None
                     if faces:
                         best = max(faces, key=lambda f: f[2] * f[3])
-                        h, w = frame.shape[:2]
                         face_center = ((best[0] + best[2] / 2) / w, (best[1] + best[3] / 2) / h)
                 if now - last_pose >= self.pose_interval:
                     last_pose = now

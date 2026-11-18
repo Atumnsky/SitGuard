@@ -12,7 +12,7 @@ from .config import data_dir
 
 log = logging.getLogger("sitguard.daylog")
 
-KINDS = ("sitting", "standing", "away", "paused")
+KINDS = ("sitting", "standing", "away", "paused", "off")
 FILE_NAME = "activity.json"
 
 
@@ -52,7 +52,9 @@ class ActivityTracker:
             pass
         except Exception:  # noqa: BLE001
             log.exception("读取活动记录失败")
+        self._record_offline()
         self._repair_long_standing()
+        self._repair_long_sitting()
 
     def _repair_long_standing(self, max_seconds: float = 4 * 3600,
                               keep_seconds: float = 600) -> None:
@@ -70,6 +72,52 @@ class ActivityTracker:
                     changed = True
                     log.warning("修正异常长站立段：%s %.1f 小时",
                                 key, (end - start) / 3600.0)
+                else:
+                    out.append([start, end, kind])
+            self.days[key] = out
+        if changed:
+            self.save()
+
+    def _last_segment_end(self) -> float:
+        ends = [e for segs in self.days.values() for _s, e, _k in segs]
+        return max(ends) if ends else 0.0
+
+    def _record_offline(self) -> None:
+        """启动时把上次结束到现在的空档记为“关机/未运行”。"""
+        last = self._last_segment_end()
+        now = self.clock()
+        if last and now - last > 120.0:
+            self._append(last, now, "off")
+            self.save()
+
+    def mark_gap(self, start: float, end: float, kind: str = "off") -> None:
+        """把一段没有采集的缺口标记为关机/休眠。"""
+        if end <= start:
+            return
+        start = max(start, self.segment_start or start)
+        if self.segment_start is not None and start > self.segment_start:
+            self._append(self.segment_start, start, self.kind)
+        self._append(start, end, kind)
+        self.kind = kind
+        self.segment_start = end
+        self.save()
+
+    def _repair_long_sitting(self, max_seconds: float = 8 * 3600,
+                             keep_seconds: float = 3600) -> None:
+        """通宵/睡眠时旧版本可能留下超长坐姿段；超过 8 小时拆成
+        1 小时坐姿 + 其余关机/未运行。"""
+        changed = False
+        for key, segs in list(self.days.items()):
+            out = []
+            for start, end, kind in segs:
+                if kind == "sitting" and end - start > max_seconds:
+                    split = min(start + keep_seconds, end)
+                    out.append([start, split, "sitting"])
+                    if end > split:
+                        out.append([split, end, "off"])
+                    changed = True
+                    log.warning("修正异常长坐姿段：%s %.1f 小时", key,
+                                (end - start) / 3600.0)
                 else:
                     out.append([start, end, kind])
             self.days[key] = out
