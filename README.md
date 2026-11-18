@@ -31,6 +31,9 @@ as soon as you stand.
 - **Stand goal** — if you stand for less than 10 minutes across any rolling
   90-minute window, a gentle toast and sound nudge you to move (can be turned
   off in Settings).
+- **Head-down vs looking away** — when the face is hidden, a downward head
+  (reading/phone) keeps you seated and triggers a posture reminder with its
+  own sound; a sideways head is treated as leaving.
 - **Sound-only mode** — hide the full-screen reminder; the app still plays
   the alert and re-reminds you every 5 minutes while you keep sitting.
 - **No main-window pop-up** — after you stand, only a small desktop toast

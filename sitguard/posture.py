@@ -40,10 +40,12 @@ class PostureProfile:
     face_h: float | None = None      # 脸高度 / 画面高度
     shoulder_y: float | None = None  # 肩部 y
     visible: bool = True             # 是否能看到脸
+    face_x: float | None = None      # 脸中心 x
 
     def to_dict(self) -> dict:
         return {"face_y": self.face_y, "face_h": self.face_h,
-                "shoulder_y": self.shoulder_y, "visible": self.visible}
+                "shoulder_y": self.shoulder_y, "visible": self.visible,
+                "face_x": self.face_x}
 
     @classmethod
     def from_dict(cls, raw: dict | None) -> "PostureProfile | None":
@@ -56,6 +58,7 @@ class PostureProfile:
                 shoulder_y=(None if raw.get("shoulder_y") is None
                             else float(raw["shoulder_y"])),
                 visible=bool(raw.get("visible", True)),
+                face_x=None if raw.get("face_x") is None else float(raw["face_x"]),
             )
         except (TypeError, ValueError):
             return None
@@ -78,12 +81,14 @@ def median_profile(profiles: list[PostureProfile]) -> PostureProfile:
                               shoulder_y=_median(shoulders) if shoulders else None)
     face_ys = [p.face_y for p in visible if p.face_y is not None]
     face_hs = [p.face_h for p in visible if p.face_h is not None]
+    face_xs = [p.face_x for p in visible if p.face_x is not None]
     shoulders = [p.shoulder_y for p in visible if p.shoulder_y is not None]
     return PostureProfile(
         face_y=_median(face_ys) if face_ys else None,
         face_h=_median(face_hs) if face_hs else None,
         shoulder_y=_median(shoulders) if shoulders else None,
         visible=True,
+        face_x=_median(face_xs) if face_xs else None,
     )
 
 
@@ -96,6 +101,7 @@ def extract_profile(faces, pose: list[Landmark] | None,
         if frame_h > 0:
             profile.face_y = (y + h / 2) / frame_h
             profile.face_h = h / frame_h
+            profile.face_x = (x + w / 2) / frame_w
             profile.visible = True
     if pose and len(pose) > 12:
         ys = [pose[i].y for i in (L_SHOULDER, R_SHOULDER)

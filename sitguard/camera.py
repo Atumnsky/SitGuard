@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .head import HeadState
 from .health import FrameHealth
 from .posture import (L_SHOULDER, R_SHOULDER, Landmark, Posture, PostureAnalyzer,
                       PostureProfile, extract_profile)
@@ -61,6 +62,7 @@ class CameraSnapshot:
     pose: list[Landmark] | None = None
     stamp: float = 0.0
     status: CameraStatus = field(default_factory=CameraStatus)
+    head_down: bool = False
 
 
 class FaceDetector:
@@ -186,6 +188,7 @@ class CameraWorker:
         self._last_posture: Posture = "unknown"
         self._pose_error = ""
         self._health = FrameHealth()
+        self.head = HeadState()
         self._health_retry_at = 0.0
         self._apply_calibration()
 
@@ -259,7 +262,7 @@ class CameraWorker:
             return CameraSnapshot(snap.frame, list(snap.faces), snap.seen,
                                   snap.posture, snap.posture_reason,
                                   snap.standing_seconds, snap.profile, snap.pose,
-                                  snap.stamp, snap.status.copy())
+                                  snap.stamp, snap.status.copy(), snap.head_down)
 
     @property
     def status(self) -> CameraStatus:
@@ -410,7 +413,14 @@ class CameraWorker:
                             pose_lms = self._pose.detect(frame, now)
                         except Exception:  # noqa: BLE001
                             pose_lms = None
-                    person = seen or self._pose_body_present(pose_lms)
+                    sit_face_y = (self.posture.sitting_profile.face_y
+                                  if self.posture.sitting_profile is not None else None)
+                    head = self.head.update(seen, profile, pose_lms, now, sit_face_y)
+                    head_down = head == "down"
+                    if head == "side":
+                        person = False
+                    else:
+                        person = seen or head_down or self._pose_body_present(pose_lms)
                     if self.on_presence:
                         try:
                             self.on_presence(person, now)
@@ -449,6 +459,7 @@ class CameraWorker:
                     snap.profile = profile
                     snap.pose = pose_lms
                     snap.stamp = now
+                    snap.head_down = head_down
                     snap.status.state = "ok"
                     snap.status.message = ""
                     snap.status.fps = fps

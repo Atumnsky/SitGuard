@@ -545,11 +545,18 @@ class MainWindow:
                                        color=color)
             self.btn_pause.configure_text(t("pause"))
 
+        head_down = (camera_state == "ok" and snap.present
+                     and bool(getattr(self.app._camera_snapshot, "head_down", False)))
+        if head_down:
+            heading = t("head_down_heading")
+            sub = t("head_down_sub")
         self.lbl_heading.configure(text=heading)
         self.lbl_sub.configure(text=sub)
 
         if camera_state == "ok":
-            if not snap.present:
+            if head_down:
+                self.lbl_presence.configure(text=t("head_down_label"), fg=ui.WARN)
+            elif not snap.present:
                 away = snap.away_seconds
                 if away >= 60:
                     self.lbl_presence.configure(
@@ -1617,7 +1624,7 @@ class SoundWindow:
     """选择提醒音、站起音、坐下音；支持自定义 WAV。"""
 
     KEYS = ("classic", "bright", "drop", "rise", "dingdong", "wood",
-            "bird", "retro", "sit_soft", "stand_up", "none")
+            "bird", "retro", "sit_soft", "stand_up", "posture", "none")
 
     def __init__(self, app, root: tk.Tk):
         self.app = app
@@ -1638,7 +1645,7 @@ class SoundWindow:
         win.title(t("sound_window_title"))
         win.configure(bg=ui.BG)
         win.resizable(False, False)
-        ui.center_window(win, ui.dp(560), ui.dp(430), anchor="center")
+        ui.center_window(win, ui.dp(560), ui.dp(465), anchor="center")
         win.protocol("WM_DELETE_WINDOW", self.close)
 
         tk.Label(win, text=t("sound_window_title"), fg=ui.TEXT, bg=ui.BG,
@@ -1671,6 +1678,10 @@ class SoundWindow:
         self._sound_row(win, t("sound_stand"), stand_var,
                         lambda: self._pick("stand_sound", stand_var),
                         "stand_sound", cfg.stand_sound)
+        posture_var = tk.StringVar(value=self._label(cfg.posture_sound))
+        self._sound_row(win, t("sound_posture"), posture_var,
+                        lambda: self._pick("posture_sound", posture_var),
+                        "posture_sound", cfg.posture_sound)
 
         ui.RoundButton(win, t("close"), command=self.close, width=110,
                        height=36, radius=10, bg=ui.BG_3,
@@ -1733,6 +1744,8 @@ class SoundWindow:
             sound.reminder_sound(cfg.sound_file, cfg.sound_name)
         elif field == "sit_sound":
             sound.sit_sound(cfg.sit_sound)
+        elif field == "posture_sound":
+            sound.posture_sound(cfg.posture_sound)
         else:
             sound.stand_sound(cfg.stand_sound)
 

@@ -99,6 +99,8 @@ class App:
         self._stand_goal_started = time.monotonic()
         self._stand_goal_last = 0.0
         self._last_stand_check = 0.0
+        self._head_down_active = False
+        self._last_head_down_reminder = 0.0
         self._last_stats_save = time.monotonic()
         self._last_preview = 0.0
         self._tray = None
@@ -426,6 +428,7 @@ class App:
             self._track_posture(now)
             self._track_activity()
             self._check_stand_goal(now)
+            self._check_head_down(now)
             try:
                 view = bool(self.root.winfo_exists()) and self.root.state() != "withdrawn"
             except tk.TclError:
@@ -679,6 +682,25 @@ class App:
             sound.reminder_sound(cfg.sound_file, cfg.sound_name)
         log.info("站立不足提醒：%.0f 秒 / %d 分钟窗口", standing,
                  cfg.stand_goal_window_minutes)
+
+    def _check_head_down(self, now: float) -> None:
+        """低头看手机/书时保持坐姿计时，并提醒纠正体态。"""
+        down = bool(getattr(self._camera_snapshot, "head_down", False))
+        active = (down and self.engine.present
+                  and self.engine.phase is Phase.WATCHING)
+        if not active:
+            self._head_down_active = False
+            return
+        due = (not self._head_down_active
+               or now - self._last_head_down_reminder >= 180.0)
+        if not due:
+            return
+        self._head_down_active = True
+        self._last_head_down_reminder = now
+        self.notify(i18n.t("toast_head_down"), ui.WARN, ms=4200)
+        if self.config.sound and not self.is_silent():
+            sound.posture_sound(self.config.posture_sound)
+        log.info("低头体态提醒")
 
     def _track_posture(self, now: float) -> None:
         snap = self.engine.snapshot(self._camera_state, self._camera_message,
