@@ -186,6 +186,7 @@ class CameraWorker:
         self._cap = None
         self.posture = PostureAnalyzer()
         self._last_posture: Posture = "unknown"
+        self._last_head: str | None = None
         self._pose_error = ""
         self._health = FrameHealth()
         self.head = HeadState()
@@ -448,12 +449,23 @@ class CameraWorker:
                     profile = extract_profile(faces, pose_lms, w, h)
                     sit_face_y = (self.posture.sitting_profile.face_y
                                   if self.posture.sitting_profile is not None else None)
-                    head = self.head.update(seen, profile, pose_lms, now, sit_face_y)
+                    body_present = self._pose_body_present(pose_lms)
+                    head = self.head.update(seen, profile, pose_lms, now,
+                                            sit_face_y, body_present)
                     head_down = head == "down"
+                    if head != self._last_head:
+                        log.info("头部状态：%s → %s nose=%s shoulder=%s face_y=%s",
+                                 self._last_head, head,
+                                 None if not pose_lms else
+                                 (round(pose_lms[0].y, 3), round(pose_lms[0].x, 3),
+                                  round(pose_lms[0].visibility, 2)),
+                                 None if profile.shoulder_y is None else round(profile.shoulder_y, 3),
+                                 None if profile.face_y is None else round(profile.face_y, 3))
+                        self._last_head = head
                     if head == "side":
                         person = False
                     else:
-                        person = seen or head_down or self._pose_body_present(pose_lms)
+                        person = seen or head_down or body_present
                     if self.on_presence:
                         try:
                             self.on_presence(person, now)
@@ -463,6 +475,10 @@ class CameraWorker:
                         posture = self.posture.update(
                             now, pose=pose_lms, profile=profile,
                             face_present=seen, person_present=person)
+                        # 低头且肩膀仍在坐姿高度时，优先按坐姿处理，
+                        # 避免膝盖/躯干比例把低头误判成站立。
+                        if head_down and body_present and posture == "standing":
+                            posture = "sitting"
                     except Exception:  # noqa: BLE001
                         log.exception("姿态分析异常")
                     if posture != self._last_posture:
@@ -527,6 +543,7 @@ class SimulatedCamera:
         self._present = True
         self._posture: Posture = "sitting"
         self._last_posture: Posture = "unknown"
+        self._last_head: str | None = None
 
     def start(self) -> None:
         self._stop.clear()

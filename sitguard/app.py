@@ -494,9 +494,11 @@ class App:
     def _track_activity(self) -> None:
         pose_ok = self._camera_snapshot.status.pose_ok
         snap = self.engine.snapshot(self._camera_state, self._camera_message, pose_ok)
+        head_down = bool(getattr(self._camera_snapshot, "head_down", False))
         kind = ("paused" if snap.phase is Phase.PAUSED
                 else ("away" if not snap.present
-                      else ("standing" if snap.posture == "standing" else "sitting")))
+                      else ("sitting" if head_down
+                            else ("standing" if snap.posture == "standing" else "sitting"))))
         self.activity.update(kind)
 
     def _refresh(self, now: float) -> None:

@@ -38,7 +38,8 @@ class HeadState:
 
     def update(self, face_present: bool, profile: PostureProfile,
                pose: list[Landmark] | None, now: float,
-               sitting_face_y: float | None = None) -> str | None:
+               sitting_face_y: float | None = None,
+               body_present: bool = False) -> str | None:
         if self.baseline_y is None and sitting_face_y is not None:
             self.baseline_y = sitting_face_y
         if face_present and profile.face_y is not None:
@@ -52,7 +53,7 @@ class HeadState:
             self.last_y = y
             self.last_at = now
             self.side = False
-            if y > self.baseline_y + 0.07:
+            if y > self.baseline_y + 0.06:
                 self.down = True
             elif y < self.baseline_y + 0.03:
                 self.down = False
@@ -74,8 +75,6 @@ class HeadState:
             if sw > 1e-6 and abs(nx - sx) / sw > 0.62:
                 self.down, self.side = False, True
                 return "side"
-            if normal:
-                return None
             if self.baseline_y is not None and ny < self.baseline_y - 0.05:
                 self.down, self.side = False, True
                 return "side"
@@ -94,6 +93,10 @@ class HeadState:
                 self.down, self.side = True, False
             elif self.last_x < 0.12 or self.last_x > 0.88:
                 self.down, self.side = False, True
+        # 脸和鼻子都看不到，但肩膀仍在坐姿高度：大概率是在低头看书/手机。
+        if body_present and not self.side:
+            self.down = True
+            return "down"
         if self.down:
             return "down"
         if self.side:

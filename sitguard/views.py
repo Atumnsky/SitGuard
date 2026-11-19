@@ -492,7 +492,9 @@ class MainWindow:
         sit = snap.sitting_seconds
         limit = snap.sit_limit
         ratio = sit / limit if limit else 0
-        standing = snap.posture == "standing" and snap.present
+        head_down = (self.app._camera_state == "ok" and snap.present
+                     and bool(getattr(self.app._camera_snapshot, "head_down", False)))
+        standing = snap.posture == "standing" and snap.present and not head_down
 
         if phase is Phase.PAUSED:
             heading = t("paused_heading")
@@ -545,8 +547,6 @@ class MainWindow:
                                        color=color)
             self.btn_pause.configure_text(t("pause"))
 
-        head_down = (camera_state == "ok" and snap.present
-                     and bool(getattr(self.app._camera_snapshot, "head_down", False)))
         if head_down:
             heading = t("head_down_heading")
             sub = t("head_down_sub")

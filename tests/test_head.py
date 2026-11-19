@@ -54,6 +54,12 @@ class TestHeadState(unittest.TestCase):
                  pose(), 0.5, 0.65)
         self.assertEqual(h.update(False, PostureProfile(visible=False),
                                   pose(nose_y=0.6, vis=0.1), 0.8, 0.65), "side")
+
+    def test_body_present_without_face_is_down(self):
+        h = HeadState()
+        h.update(True, PostureProfile(face_y=0.65, visible=True), pose(), 0.0, 0.65)
+        self.assertEqual(h.update(False, PostureProfile(visible=False),
+                                  pose(vis=0.1), 1.0, 0.65, body_present=True), "down")
     def test_normal_face_resets(self):
         h = HeadState()
         h.update(True, PostureProfile(face_y=0.65, visible=True), pose(), 0.0, 0.65)
