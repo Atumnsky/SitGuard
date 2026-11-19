@@ -65,6 +65,13 @@ class HeadState:
         if nose is not None and shoulders is not None:
             nx, ny = nose
             sx, sy, sw = shoulders
+            # 鼻子跑到肩膀下方很多，通常是姿态模型在空椅子/背景上的误检
+            if ny > sy + 0.08:
+                nose = None
+                nx = ny = 0.0
+        if nose is not None and shoulders is not None:
+            nx, ny = nose
+            sx, sy, sw = shoulders
             if self.baseline_y is not None and ny > self.baseline_y + 0.02:
                 self.down, self.side = True, False
                 return "down"
@@ -108,7 +115,7 @@ class HeadState:
         if not pose or len(pose) <= NOSE:
             return None
         lm = pose[NOSE]
-        if lm.visibility < 0.3 or not (0.0 <= lm.x <= 1.0 and 0.0 <= lm.y <= 1.0):
+        if lm.visibility < 0.5 or not (0.0 <= lm.x <= 1.0 and 0.0 <= lm.y <= 1.0):
             return None
         return (lm.x, lm.y)
 
