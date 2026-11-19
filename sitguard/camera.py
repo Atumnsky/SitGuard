@@ -189,6 +189,9 @@ class CameraWorker:
         self._pose_error = ""
         self._health = FrameHealth()
         self.head = HeadState()
+        self._blocked = False
+        self._blocked_since = 0.0
+        self._blocked_logged = 0.0
         self._health_retry_at = 0.0
         self._apply_calibration()
 
@@ -379,13 +382,26 @@ class CameraWorker:
                         frame, (640, int(frame.shape[0] * 640 / frame.shape[1])),
                         interpolation=cv2.INTER_AREA)
                 reason = self._health.update(frame, now)
-                if reason and now >= self._health_retry_at:
-                    self._health_retry_at = now + (10.0 if reason == "snow" else 30.0)
-                    log.warning("检测到摄像头异常画面（%s），重启：%s",
-                                reason, self._health.last_stats)
-                    msg = ("画面异常（雪花），正在自动重连…" if reason == "snow"
-                           else "画面全黑，正在尝试重新连接…")
-                    self._set_status("error", msg)
+                stats = self._health.last_stats
+                if stats.get("mean", 0) > 8:
+                    self._blocked = False
+                if reason == "black":
+                    if not self._blocked:
+                        self._blocked = True
+                        self._blocked_since = now
+                        self._blocked_logged = now
+                        log.warning("摄像头画面全黑，可能被遮挡/隐私开关关闭：%s", stats)
+                    elif now - self._blocked_logged > 300:
+                        self._blocked_logged = now
+                        log.info("摄像头仍全黑（%.0f 分钟）",
+                                 (now - self._blocked_since) / 60.0)
+                    self._set_status(
+                        "blocked",
+                        "画面全黑：请检查摄像头遮挡盖、隐私开关或镜头盖")
+                elif reason == "snow" and now >= self._health_retry_at:
+                    self._health_retry_at = now + 10.0
+                    log.warning("检测到摄像头异常画面（snow）：%s", stats)
+                    self._set_status("error", "画面异常（雪花），正在自动重连…")
                     break
                 frames += 1
                 if now - fps_t0 >= 1.0:
@@ -475,8 +491,12 @@ class CameraWorker:
                     snap.pose = pose_lms
                     snap.stamp = now
                     snap.head_down = head_down
-                    snap.status.state = "ok"
-                    snap.status.message = ""
+                    if self._blocked:
+                        snap.status.state = "blocked"
+                        snap.status.message = "画面全黑：请检查摄像头遮挡盖、隐私开关或镜头盖"
+                    else:
+                        snap.status.state = "ok"
+                        snap.status.message = ""
                     snap.status.fps = fps
                     snap.status.detections = len(faces)
                     snap.status.posture = posture

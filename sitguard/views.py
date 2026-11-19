@@ -574,9 +574,10 @@ class MainWindow:
             if snap.pose_ok and not getattr(self.app.config, "calibration", None):
                 detail = t("pose_cal_hint")
             self.lbl_presence_detail.configure(text=detail)
-        elif camera_state == "error":
+        elif camera_state in ("error", "blocked"):
             self.lbl_presence.configure(text=t("cam_error"), fg=ui.DANGER)
-            self.lbl_presence_detail.configure(text=t("cam_error_hint"))
+            self.lbl_presence_detail.configure(
+                text=self.app._camera_message or t("cam_error_hint"))
         elif camera_state == "off":
             self.lbl_presence.configure(text=t("cam_off"), fg=ui.TEXT_FAINT)
             self.lbl_presence_detail.configure(text="")

@@ -410,6 +410,9 @@ class App:
                 if status.state == "ok":
                     self._camera_state = "ok"
                     self._camera_message = ""
+                elif status.state == "blocked":
+                    self._camera_state = "blocked"
+                    self._camera_message = status.message
                 elif status.state == "error":
                     self._camera_state = "error"
                     self._camera_message = status.message
