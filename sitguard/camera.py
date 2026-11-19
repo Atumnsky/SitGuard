@@ -453,6 +453,13 @@ class CameraWorker:
                     head = self.head.update(seen, profile, pose_lms, now,
                                             sit_face_y, body_present)
                     head_down = head == "down"
+                    # 脸/鼻子都没有、肩膀也看不到时，低头最多维持 5 分钟，
+                    # 避免人离开后一直被记成坐着。
+                    if (head_down and not seen and not body_present
+                            and self.head.last_at
+                            and now - self.head.last_at > 300.0):
+                        head_down = False
+                        head = None
                     if head != self._last_head:
                         log.info("头部状态：%s → %s nose=%s shoulder=%s face_y=%s",
                                  self._last_head, head,

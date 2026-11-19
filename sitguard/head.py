@@ -94,12 +94,13 @@ class HeadState:
             dy = self.last_y - self.prev_y
             if dy > 0.03 and dy >= abs(dx):
                 self.down, self.side = True, False
-            elif abs(dx) > 0.04 and abs(dx) > dy:
+            elif (abs(dx) > 0.12 and abs(dx) > dy * 1.5
+                  and (self.last_x < 0.15 or self.last_x > 0.85)):
                 self.down, self.side = False, True
-            elif self.baseline_y is not None and self.last_y > self.baseline_y + 0.06:
+            elif (self.baseline_y is not None
+                  and self.last_y >= self.baseline_y - 0.08):
+                # 脸在坐姿高度消失：优先认为是低头/遮挡，不判离开
                 self.down, self.side = True, False
-            elif self.last_x < 0.12 or self.last_x > 0.88:
-                self.down, self.side = False, True
         # 脸和鼻子都看不到，但肩膀仍在坐姿高度：大概率是在低头看书/手机。
         if body_present and not self.side:
             self.down = True
