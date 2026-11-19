@@ -25,7 +25,6 @@ BUILTINS: dict[str, list[tuple]] = {
               (784, 70, "square"), (1046, 120, "square")],
     "sit_soft": [(520, 70), (400, 110)],
     "stand_up": [(700, 70), (950, 130)],
-    "posture": [(523, 100, "square"), (392, 100, "square"), (262, 190, "square")],
     "none": [],
 }
 SOUND_NAMES = tuple(BUILTINS)
@@ -99,10 +98,6 @@ def sit_sound(name: str = "sit_soft") -> None:
 
 
 def stand_sound(name: str = "stand_up") -> None:
-    play_builtin(name)
-
-
-def posture_sound(name: str = "posture") -> None:
     play_builtin(name)
 
 

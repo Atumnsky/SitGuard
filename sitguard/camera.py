@@ -16,7 +16,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .head import HeadState
 from .health import FrameHealth
 from .posture import (L_SHOULDER, R_SHOULDER, Landmark, Posture, PostureAnalyzer,
                       PostureProfile, extract_profile)
@@ -62,7 +61,6 @@ class CameraSnapshot:
     pose: list[Landmark] | None = None
     stamp: float = 0.0
     status: CameraStatus = field(default_factory=CameraStatus)
-    head_down: bool = False
 
 
 class FaceDetector:
@@ -186,10 +184,8 @@ class CameraWorker:
         self._cap = None
         self.posture = PostureAnalyzer()
         self._last_posture: Posture = "unknown"
-        self._last_head: str | None = None
         self._pose_error = ""
         self._health = FrameHealth()
-        self.head = HeadState()
         self._blocked = False
         self._blocked_since = 0.0
         self._blocked_logged = 0.0
@@ -266,7 +262,7 @@ class CameraWorker:
             return CameraSnapshot(snap.frame, list(snap.faces), snap.seen,
                                   snap.posture, snap.posture_reason,
                                   snap.standing_seconds, snap.profile, snap.pose,
-                                  snap.stamp, snap.status.copy(), snap.head_down)
+                                  snap.stamp, snap.status.copy())
 
     @property
     def status(self) -> CameraStatus:
@@ -447,34 +443,8 @@ class CameraWorker:
                             pose_lms = None
                     h, w = frame.shape[:2]
                     profile = extract_profile(faces, pose_lms, w, h)
-                    sit = self.posture.sitting_profile
-                    sit_face_y = sit.face_y if sit is not None else None
-                    sit_bottom = ((sit.face_y + (sit.face_h or 0) / 2.0)
-                                  if sit is not None and sit.face_y is not None else None)
                     body_present = self._pose_body_present(pose_lms)
-                    head = self.head.update(seen, profile, pose_lms, now,
-                                            sit_face_y, body_present, sit_bottom)
-                    head_down = head == "down"
-                    # 脸/鼻子都没有、肩膀也看不到时，低头最多维持 5 分钟，
-                    # 避免人离开后一直被记成坐着。
-                    if (head_down and not seen and not body_present
-                            and self.head.last_at
-                            and now - self.head.last_at > 300.0):
-                        head_down = False
-                        head = None
-                    if head != self._last_head:
-                        log.info("头部状态：%s → %s nose=%s shoulder=%s face_y=%s",
-                                 self._last_head, head,
-                                 None if not pose_lms else
-                                 (round(pose_lms[0].y, 3), round(pose_lms[0].x, 3),
-                                  round(pose_lms[0].visibility, 2)),
-                                 None if profile.shoulder_y is None else round(profile.shoulder_y, 3),
-                                 None if profile.face_y is None else round(profile.face_y, 3))
-                        self._last_head = head
-                    if head == "side":
-                        person = False
-                    else:
-                        person = seen or head_down or body_present
+                    person = seen or body_present
                     if self.on_presence:
                         try:
                             self.on_presence(person, now)
@@ -484,10 +454,6 @@ class CameraWorker:
                         posture = self.posture.update(
                             now, pose=pose_lms, profile=profile,
                             face_present=seen, person_present=person)
-                        # 低头且肩膀仍在坐姿高度时，优先按坐姿处理，
-                        # 避免膝盖/躯干比例把低头误判成站立。
-                        if head_down and body_present and posture == "standing":
-                            posture = "sitting"
                     except Exception:  # noqa: BLE001
                         log.exception("姿态分析异常")
                     if posture != self._last_posture:
@@ -515,7 +481,6 @@ class CameraWorker:
                     snap.profile = profile
                     snap.pose = pose_lms
                     snap.stamp = now
-                    snap.head_down = head_down
                     if self._blocked:
                         snap.status.state = "blocked"
                         snap.status.message = "画面全黑：请检查摄像头遮挡盖、隐私开关或镜头盖"
@@ -552,7 +517,6 @@ class SimulatedCamera:
         self._present = True
         self._posture: Posture = "sitting"
         self._last_posture: Posture = "unknown"
-        self._last_head: str | None = None
 
     def start(self) -> None:
         self._stop.clear()

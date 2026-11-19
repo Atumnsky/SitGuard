@@ -72,7 +72,6 @@ class Config:
     sound_name: str = "classic"   # 内置提醒音
     sit_sound: str = "sit_soft"   # 坐下提示音
     stand_sound: str = "stand_up" # 站起提示音
-    posture_sound: str = "posture" # 低头体态提醒音
     silent_mode: bool = False     # 静默模式：无声音、无全屏，只右下角提示
     auto_silent_on_battery: bool = True
     stand_goal_enabled: bool = True
@@ -117,7 +116,6 @@ class Config:
         c.sound_name = str(c.sound_name or "classic")
         c.sit_sound = str(c.sit_sound or "sit_soft")
         c.stand_sound = str(c.stand_sound or "stand_up")
-        c.posture_sound = str(c.posture_sound or "posture")
         c.silent_mode = bool(c.silent_mode)
         c.auto_silent_on_battery = bool(c.auto_silent_on_battery)
         c.stand_goal_enabled = bool(c.stand_goal_enabled)
