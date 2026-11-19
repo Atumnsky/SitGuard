@@ -447,11 +447,13 @@ class CameraWorker:
                             pose_lms = None
                     h, w = frame.shape[:2]
                     profile = extract_profile(faces, pose_lms, w, h)
-                    sit_face_y = (self.posture.sitting_profile.face_y
-                                  if self.posture.sitting_profile is not None else None)
+                    sit = self.posture.sitting_profile
+                    sit_face_y = sit.face_y if sit is not None else None
+                    sit_bottom = ((sit.face_y + (sit.face_h or 0) / 2.0)
+                                  if sit is not None and sit.face_y is not None else None)
                     body_present = self._pose_body_present(pose_lms)
                     head = self.head.update(seen, profile, pose_lms, now,
-                                            sit_face_y, body_present)
+                                            sit_face_y, body_present, sit_bottom)
                     head_down = head == "down"
                     # 脸/鼻子都没有、肩膀也看不到时，低头最多维持 5 分钟，
                     # 避免人离开后一直被记成坐着。

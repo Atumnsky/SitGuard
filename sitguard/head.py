@@ -1,10 +1,7 @@
 """头部朝向判断：区分低头（还在）与左右转头/离开。
 
-脸检测在高低头时会丢脸，但姿态关键点通常还能给出鼻子和肩膀。
-规则：
-- 鼻子明显低于坐姿基线，或最后一段脸部轨迹向下 → 低头（仍算在座）；
-- 鼻子横向偏离肩膀中线很多，或最后轨迹向左右/出画 → 离开；
-- 没有可靠证据时不强行判断，交给身体在场/离开逻辑。
+低头只在脸部框的下边缘接近画面底部时触发，稍微比坐姿低一点不算。
+脸消失时用最后的框位置/姿态鼻子辅助，左右转头仍判离开。
 """
 
 from __future__ import annotations
@@ -23,40 +20,46 @@ class HeadState:
     side: bool = False
     last_x: float | None = None
     last_y: float | None = None
+    last_bottom: float | None = None
     last_at: float = 0.0
     prev_x: float | None = None
     prev_y: float | None = None
     prev_at: float = 0.0
-    baseline_y: float | None = None
+    baseline_bottom: float | None = None
 
     def reset(self) -> None:
         self.down = False
         self.side = False
-        self.last_x = self.last_y = None
+        self.last_x = self.last_y = self.last_bottom = None
         self.prev_x = self.prev_y = None
         self.last_at = self.prev_at = 0.0
+
+    def _threshold(self) -> float:
+        base = self.baseline_bottom or 0.0
+        return max(0.90, base + 0.08)
 
     def update(self, face_present: bool, profile: PostureProfile,
                pose: list[Landmark] | None, now: float,
                sitting_face_y: float | None = None,
-               body_present: bool = False) -> str | None:
-        if self.baseline_y is None and sitting_face_y is not None:
-            self.baseline_y = sitting_face_y
+               body_present: bool = False,
+               sitting_bottom: float | None = None) -> str | None:
+        if self.baseline_bottom is None and sitting_bottom is not None:
+            self.baseline_bottom = sitting_bottom
+        threshold = self._threshold()
+
         if face_present and profile.face_y is not None:
             y = profile.face_y
-            if self.baseline_y is None:
-                self.baseline_y = y
+            h = profile.face_h or 0.0
+            bottom = y + h / 2.0
             self.prev_x, self.prev_y, self.prev_at = self.last_x, self.last_y, self.last_at
             nose = self._nose(pose)
             self.last_x = (profile.face_x if profile.face_x is not None
                            else (nose[0] if nose else None))
             self.last_y = y
+            self.last_bottom = bottom
             self.last_at = now
             self.side = False
-            if y > self.baseline_y + 0.06:
-                self.down = True
-            elif y < self.baseline_y + 0.03:
-                self.down = False
+            self.down = bottom >= threshold
             return "down" if self.down else None
 
         # 脸不可见：优先用姿态鼻子
@@ -65,46 +68,39 @@ class HeadState:
         if nose is not None and shoulders is not None:
             nx, ny = nose
             sx, sy, sw = shoulders
-            # 鼻子跑到肩膀下方很多，通常是姿态模型在空椅子/背景上的误检
-            if ny > sy + 0.08:
+            if ny > sy + 0.08:      # 鼻子在肩膀下方：背景误检
                 nose = None
-                nx = ny = 0.0
         if nose is not None and shoulders is not None:
             nx, ny = nose
             sx, sy, sw = shoulders
-            if self.baseline_y is not None and ny > self.baseline_y + 0.02:
+            if ny < 0.85:
+                self.down = False
+            if ny >= 0.90:
                 self.down, self.side = True, False
                 return "down"
-            normal = (self.baseline_y is not None
-                      and ny <= self.baseline_y + 0.005)
-            if normal:
-                self.down, self.side = False, False
             if sw > 1e-6 and abs(nx - sx) / sw > 0.62:
                 self.down, self.side = False, True
                 return "side"
-            if self.baseline_y is not None and ny < self.baseline_y - 0.05:
-                self.down, self.side = False, True
-                return "side"
 
-        # 姿态看不清时，用最后一段脸部轨迹
+        # 脸消失后：只有最后的框下缘接近底部，或明显向下移动且已接近底部
+        if self.last_bottom is not None:
+            if self.last_bottom >= threshold - 0.03:
+                self.down, self.side = True, False
+            elif (self.last_at and now - self.last_at <= 2.0
+                  and self.last_y is not None and self.prev_y is not None
+                  and self.last_y - self.prev_y > 0.03
+                  and self.last_bottom >= 0.88):
+                self.down, self.side = True, False
+            elif self.down and self.last_bottom < threshold - 0.08:
+                self.down = False
+
+        # 左右转头：强横向轨迹 + 出画边缘
         if (self.last_at and now - self.last_at <= 2.0
-                and self.last_x is not None and self.last_y is not None
-                and self.prev_x is not None and self.prev_y is not None):
-            dx = self.last_x - self.prev_x
-            dy = self.last_y - self.prev_y
-            if dy > 0.03 and dy >= abs(dx):
-                self.down, self.side = True, False
-            elif (abs(dx) > 0.12 and abs(dx) > dy * 1.5
-                  and (self.last_x < 0.15 or self.last_x > 0.85)):
-                self.down, self.side = False, True
-            elif (self.baseline_y is not None
-                  and self.last_y >= self.baseline_y - 0.08):
-                # 脸在坐姿高度消失：优先认为是低头/遮挡，不判离开
-                self.down, self.side = True, False
-        # 脸和鼻子都看不到，但肩膀仍在坐姿高度：大概率是在低头看书/手机。
-        if body_present and not self.side:
-            self.down = True
-            return "down"
+                and self.last_x is not None and self.prev_x is not None
+                and abs(self.last_x - self.prev_x) > 0.12
+                and (self.last_x < 0.15 or self.last_x > 0.85)):
+            self.down, self.side = False, True
+
         if self.down:
             return "down"
         if self.side:

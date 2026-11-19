@@ -30,14 +30,14 @@ class TestHeadState(unittest.TestCase):
         t = 0.0
         prof = PostureProfile(face_y=0.65, visible=True)
         h.update(True, prof, pose(nose_y=0.55), t, 0.65)
-        low = PostureProfile(face_y=0.78, visible=True)
+        low = PostureProfile(face_y=0.78, face_h=0.3, visible=True)
         self.assertEqual(h.update(True, low, pose(nose_y=0.7), t + 0.3, 0.65), "down")
 
     def test_pose_nose_low_is_down(self):
         h = HeadState()
         h.update(True, PostureProfile(face_y=0.65, visible=True), pose(nose_y=0.6), 0.0, 0.65)
         self.assertEqual(h.update(False, PostureProfile(visible=False),
-                                  pose(nose_y=0.82), 1.0, 0.65), "down")
+                                  pose(nose_y=0.92), 1.0, 0.65), "down")
 
     def test_pose_nose_side_is_side(self):
         h = HeadState()
@@ -55,9 +55,16 @@ class TestHeadState(unittest.TestCase):
         self.assertEqual(h.update(False, PostureProfile(visible=False),
                                   pose(nose_y=0.6, vis=0.1), 0.8, 0.65), "side")
 
-    def test_body_present_without_face_is_down(self):
+    def test_slightly_lower_is_not_down(self):
         h = HeadState()
         h.update(True, PostureProfile(face_y=0.65, visible=True), pose(), 0.0, 0.65)
+        self.assertIsNone(h.update(True, PostureProfile(face_y=0.72, face_h=0.2,
+                                                       visible=True), pose(), 1.0, 0.65))
+
+    def test_face_lost_at_bottom_is_down(self):
+        h = HeadState()
+        h.update(True, PostureProfile(face_y=0.88, face_h=0.1, visible=True),
+                 pose(), 0.0, 0.65)
         self.assertEqual(h.update(False, PostureProfile(visible=False),
                                   pose(vis=0.1), 1.0, 0.65, body_present=True), "down")
     def test_normal_face_resets(self):
