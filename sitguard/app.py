@@ -665,11 +665,13 @@ class App:
         end = time.time()
         start = end - window
         standing = self.activity.seconds_between("standing", start, end)
+        away = self.activity.seconds_between("away", start, end)
+        moving = standing + (away if cfg.stand_goal_include_away else 0.0)
         sitting = self.activity.seconds_between("sitting", start, end)
         if sitting < min(1800.0, window * 0.3):
             return
         goal = cfg.stand_goal_minutes * 60.0
-        if standing >= goal:
+        if moving >= goal:
             self._stand_goal_last = 0.0
             return
         repeat = cfg.stand_goal_repeat_minutes * 60.0
@@ -677,11 +679,11 @@ class App:
             return
         self._stand_goal_last = now
         self.notify(i18n.t("toast_stand_goal", w=cfg.stand_goal_window_minutes,
-                           s=i18n.fmt_duration(standing)), ui.WARN, ms=4500)
+                           s=i18n.fmt_duration(moving)), ui.WARN, ms=4500)
         if cfg.sound and not self.is_silent():
             sound.reminder_sound(cfg.sound_file, cfg.sound_name)
-        log.info("站立不足提醒：%.0f 秒 / %d 分钟窗口", standing,
-                 cfg.stand_goal_window_minutes)
+        log.info("活动不足提醒：站立 %.0f 秒 + 离开 %.0f 秒 / %d 分钟窗口",
+                 standing, away, cfg.stand_goal_window_minutes)
 
     def _track_posture(self, now: float) -> None:
         snap = self.engine.snapshot(self._camera_state, self._camera_message,

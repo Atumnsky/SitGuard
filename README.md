@@ -28,9 +28,9 @@ as soon as you stand.
   12 seconds, or click a button (instant).
 - **3-minute rule** — standing for 3 minutes before the reminder restarts the
   sitting timer from zero.
-- **Stand goal** — if you stand for less than 10 minutes across any rolling
-  90-minute window, a gentle toast and sound nudge you to move (can be turned
-  off in Settings).
+- **Stand goal** — if standing **plus time away from the desk** totals less
+  than 10 minutes across any rolling 90-minute window, a gentle toast and
+  sound nudge you to move (can be turned off in Settings).
 - **Sound-only mode** — hide the full-screen reminder; the app still plays
   the alert and re-reminds you every 5 minutes while you keep sitting.
 - **No main-window pop-up** — after you stand, only a small desktop toast

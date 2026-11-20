@@ -78,6 +78,7 @@ class Config:
     stand_goal_window_minutes: int = 90
     stand_goal_minutes: int = 10
     stand_goal_repeat_minutes: int = 30
+    stand_goal_include_away: bool = True
     overlay_enabled: bool = True    # 是否显示全屏提醒；关闭则只响铃
     sound_repeat: int = 3            # 提醒音重复次数
     snooze_minutes: int = 5          # 临时推迟
@@ -122,6 +123,7 @@ class Config:
         c.stand_goal_window_minutes = int(clamp(c.stand_goal_window_minutes, 30, 240))
         c.stand_goal_minutes = int(clamp(c.stand_goal_minutes, 5, 60))
         c.stand_goal_repeat_minutes = int(clamp(c.stand_goal_repeat_minutes, 10, 120))
+        c.stand_goal_include_away = bool(c.stand_goal_include_away)
         c.overlay_enabled = bool(c.overlay_enabled)
         c.snooze_minutes = int(clamp(c.snooze_minutes, 1, 120))
         c.auto_snooze_minutes = int(clamp(c.auto_snooze_minutes, 1, 30))
