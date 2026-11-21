@@ -82,6 +82,8 @@ class App:
         self._paused_by_user = False
         self._quitting = False
         self._camera_error_since: float | None = None
+        self._camera_blocked = False
+        self._camera_blocked_last = 0.0
         self._camera_started_at = time.monotonic()
         self._last_camera_restart = 0.0
         self._last_camera_notice = 0.0
@@ -417,6 +419,7 @@ class App:
                 elif status.state == "off":
                     self._camera_state = "off"
                     self._camera_message = status.message
+            self._check_camera_blocked(now)
             self._camera_watchdog(now, self._camera_snapshot)
             if (self.config.camera_restart_minutes > 0
                     and self.camera is not None
@@ -619,6 +622,29 @@ class App:
         self._sync_silent()
         if self.is_silent() == was and self.config.auto_silent_on_battery and self._on_battery:
             self.notify(i18n.t("toast_silent_battery"), ui.TEXT_DIM)
+
+    def _check_camera_blocked(self, now: float) -> None:
+        """摄像头全黑时给常驻右下角警告；恢复后自动关闭。"""
+        blocked = self._camera_state == "blocked"
+        if blocked:
+            if not self._camera_blocked:
+                self._camera_blocked = True
+                self._camera_blocked_last = now
+                self.notify(i18n.t("toast_camera_black"), ui.DANGER, ms=0)
+                if self.config.sound and not self.is_silent():
+                    sound.soft_tick()
+                log.warning("摄像头全黑，已显示常驻警告")
+            elif (now - self._camera_blocked_last > 1800
+                  and not self.desktop_toast.sticky):
+                self._camera_blocked_last = now
+                self.notify(i18n.t("toast_camera_black"), ui.DANGER, ms=0)
+            return
+        if self._camera_blocked:
+            self._camera_blocked = False
+            if self.desktop_toast.sticky:
+                self.desktop_toast.close()
+            self.notify(i18n.t("toast_camera_ok"), ui.GOOD, ms=2600)
+            log.info("摄像头画面已恢复")
 
     def _check_power(self, now: float) -> None:
         if now - self._last_power_check < 30.0:
