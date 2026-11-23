@@ -189,6 +189,7 @@ class CameraWorker:
         self._blocked = False
         self._blocked_since = 0.0
         self._blocked_logged = 0.0
+        self._blocked_retry_at = 0.0
         self._health_retry_at = 0.0
         self._apply_calibration()
 
@@ -382,6 +383,8 @@ class CameraWorker:
                 stats = self._health.last_stats
                 if stats.get("mean", 0) > 8:
                     self._blocked = False
+                    self._blocked_since = 0.0
+                    self._blocked_retry_at = 0.0
                 if reason == "black":
                     if not self._blocked:
                         self._blocked = True
@@ -392,9 +395,16 @@ class CameraWorker:
                         self._blocked_logged = now
                         log.info("摄像头仍全黑（%.0f 分钟）",
                                  (now - self._blocked_since) / 60.0)
+                    if not self._blocked_retry_at:
+                        self._blocked_retry_at = now + 180.0
                     self._set_status(
                         "blocked",
                         "画面全黑：请检查摄像头遮挡盖、隐私开关或镜头盖")
+                    if now >= self._blocked_retry_at:
+                        self._blocked_retry_at = now + 180.0
+                        log.warning("全黑超过 3 分钟，重新打开摄像头尝试恢复")
+                        self._set_status("error", "画面全黑，正在尝试重新连接…")
+                        break
                 elif reason == "snow" and now >= self._health_retry_at:
                     self._health_retry_at = now + 10.0
                     log.warning("检测到摄像头异常画面（snow）：%s", stats)

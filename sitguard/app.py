@@ -626,6 +626,9 @@ class App:
     def _check_camera_blocked(self, now: float) -> None:
         """摄像头全黑时给常驻右下角警告；恢复后自动关闭。"""
         blocked = self._camera_state == "blocked"
+        if self._camera_blocked and self._camera_state in ("init", "error"):
+            # 黑屏自动重连期间不要误报“已恢复”
+            return
         if blocked:
             if not self._camera_blocked:
                 self._camera_blocked = True
