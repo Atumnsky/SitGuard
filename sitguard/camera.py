@@ -396,13 +396,13 @@ class CameraWorker:
                         log.info("摄像头仍全黑（%.0f 分钟）",
                                  (now - self._blocked_since) / 60.0)
                     if not self._blocked_retry_at:
-                        self._blocked_retry_at = now + 180.0
+                        self._blocked_retry_at = now + 5.0
                     self._set_status(
                         "blocked",
                         "画面全黑：请检查摄像头遮挡盖、隐私开关或镜头盖")
                     if now >= self._blocked_retry_at:
                         self._blocked_retry_at = now + 180.0
-                        log.warning("全黑超过 3 分钟，重新打开摄像头尝试恢复")
+                        log.warning("画面全黑，自动关闭并重新打开摄像头")
                         self._set_status("error", "画面全黑，正在尝试重新连接…")
                         break
                 elif reason == "snow" and now >= self._health_retry_at:
